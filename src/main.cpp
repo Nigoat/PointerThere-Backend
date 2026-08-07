@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cstdlib>
 #include "utils/env.h"
 #include "utils/jwt_helper.h"
 #include "utils/middleware.h"
