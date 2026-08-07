@@ -1,57 +1,36 @@
 /*
  * PointerThere - Next generation Geometry Dash Demon List
  * Copyright (C) 2024 PointerThere — GPLv3
- *
- * Database Schema for Neon (PostgreSQL)
- * Run this file once to initialize the database.
- *
- * Usage:
- *   psql "your_neon_connection_string" -f schema.sql
  */
 
--- ─────────────────────────────────────────────────────────
--- Extensions
--- ─────────────────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";   -- fuzzy search
-CREATE EXTENSION IF NOT EXISTS "citext";    -- case-insensitive text
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+CREATE EXTENSION IF NOT EXISTS "citext";
 
--- ─────────────────────────────────────────────────────────
--- Users
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS users (
   id                  BIGSERIAL PRIMARY KEY,
   username            CITEXT NOT NULL UNIQUE,
   email               CITEXT NOT NULL UNIQUE,
-  password_hash       TEXT,                        -- NULL for OAuth-only accounts
+  password_hash       TEXT,
   avatar_url          TEXT,
   bio                 TEXT DEFAULT '',
   country             TEXT DEFAULT '',
   continent           TEXT DEFAULT '',
   is_public           BOOLEAN NOT NULL DEFAULT TRUE,
   points              NUMERIC(12,4) NOT NULL DEFAULT 0,
-
-  -- Auth
   email_verified      BOOLEAN NOT NULL DEFAULT FALSE,
   email_verify_token  TEXT,
   reset_token         TEXT,
   reset_token_expires TIMESTAMPTZ,
-
-  -- 2FA
   two_factor_enabled  BOOLEAN NOT NULL DEFAULT FALSE,
-  two_factor_secret   TEXT,                        -- TOTP secret (encrypted at rest)
-
-  -- OAuth
+  two_factor_secret   TEXT,
   discord_id          TEXT UNIQUE,
   discord_username    TEXT,
   google_id           TEXT UNIQUE,
-
-  -- Moderation
   is_banned           BOOLEAN NOT NULL DEFAULT FALSE,
   ban_reason          TEXT,
-  ban_expires_at      TIMESTAMPTZ,                 -- NULL = permanent
-  timeout_until       TIMESTAMPTZ,                 -- submission timeout
-
+  ban_expires_at      TIMESTAMPTZ,
+  timeout_until       TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -61,16 +40,13 @@ CREATE INDEX IF NOT EXISTS idx_users_google_id  ON users (google_id);
 CREATE INDEX IF NOT EXISTS idx_users_points     ON users (points DESC);
 CREATE INDEX IF NOT EXISTS idx_users_username_trgm ON users USING GIN (username gin_trgm_ops);
 
--- ─────────────────────────────────────────────────────────
--- Demon Levels
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS demon_levels (
   id              BIGSERIAL PRIMARY KEY,
   rank            INTEGER NOT NULL UNIQUE,
   name            CITEXT NOT NULL UNIQUE,
   points          NUMERIC(12,4) NOT NULL DEFAULT 0,
   verified_by     TEXT NOT NULL,
-  creators        TEXT[] NOT NULL DEFAULT '{}',    -- array of creator names
+  creators        TEXT[] NOT NULL DEFAULT '{}',
   video_url       TEXT NOT NULL,
   thumbnail_url   TEXT,
   difficulty_tier TEXT NOT NULL CHECK (difficulty_tier IN ('extreme', 'insane')),
@@ -82,21 +58,15 @@ CREATE INDEX IF NOT EXISTS idx_demon_levels_rank       ON demon_levels (rank);
 CREATE INDEX IF NOT EXISTS idx_demon_levels_name_trgm  ON demon_levels USING GIN (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_demon_levels_featured   ON demon_levels (is_featured) WHERE is_featured = TRUE;
 
--- ─────────────────────────────────────────────────────────
--- List Movement History (for the movement widget)
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS list_movements (
   id          BIGSERIAL PRIMARY KEY,
   level_id    BIGINT NOT NULL REFERENCES demon_levels(id) ON DELETE CASCADE,
-  old_rank    INTEGER,             -- NULL if new to the list
+  old_rank    INTEGER,
   new_rank    INTEGER NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_list_movements_created ON list_movements (created_at DESC);
 
--- ─────────────────────────────────────────────────────────
--- Records
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS records (
   id              BIGSERIAL PRIMARY KEY,
   level_id        BIGINT NOT NULL REFERENCES demon_levels(id) ON DELETE CASCADE,
@@ -115,11 +85,8 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE INDEX IF NOT EXISTS idx_records_status       ON records (status);
 CREATE INDEX IF NOT EXISTS idx_records_level_id     ON records (level_id);
 CREATE INDEX IF NOT EXISTS idx_records_user_id      ON records (user_id);
-CREATE INDEX IF NOT EXISTS idx_records_submitted_at ON records (submitted_at ASC);  -- oldest first for fairness
+CREATE INDEX IF NOT EXISTS idx_records_submitted_at ON records (submitted_at ASC);
 
--- ─────────────────────────────────────────────────────────
--- Ban Appeals
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS appeals (
   id          BIGSERIAL PRIMARY KEY,
   user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -130,17 +97,14 @@ CREATE TABLE IF NOT EXISTS appeals (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_appeals_status     ON appeals (status);
-CREATE INDEX IF NOT EXISTS idx_appeals_created_at ON appeals (created_at ASC);  -- oldest first
+CREATE INDEX IF NOT EXISTS idx_appeals_created_at ON appeals (created_at ASC);
 
--- ─────────────────────────────────────────────────────────
--- API Keys
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS api_keys (
   id              BIGSERIAL PRIMARY KEY,
   user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name            TEXT NOT NULL,
-  key_hash        TEXT NOT NULL UNIQUE,      -- SHA-256 hash of the actual key
-  key_prefix      TEXT NOT NULL,             -- first 8 chars shown to user
+  key_hash        TEXT NOT NULL UNIQUE,
+  key_prefix      TEXT NOT NULL,
   monthly_usage   INTEGER NOT NULL DEFAULT 0,
   last_used_at    TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -148,11 +112,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_user_id  ON api_keys (user_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 
--- ─────────────────────────────────────────────────────────
--- Site Settings (single-row config table)
--- ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS site_settings (
-  id                  INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- enforces single row
+  id                  INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   discord_url         TEXT DEFAULT '',
   twitter_url         TEXT DEFAULT '',
   youtube_url         TEXT DEFAULT '',
@@ -166,12 +127,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Insert default settings row
 INSERT INTO site_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
--- ─────────────────────────────────────────────────────────
--- updated_at trigger function
--- ─────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

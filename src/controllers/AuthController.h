@@ -9,16 +9,6 @@
 
 namespace pt::controllers {
 
-/**
- * Handles all authentication endpoints:
- *   POST /api/auth/register
- *   POST /api/auth/login
- *   POST /api/auth/oauth
- *   POST /api/auth/logout
- *   POST /api/auth/verify-email
- *   POST /api/auth/forgot-password
- *   POST /api/auth/reset-password
- */
 class AuthController : public drogon::HttpController<AuthController> {
 public:
     METHOD_LIST_BEGIN
@@ -40,4 +30,4 @@ public:
     void resetPassword (const drogon::HttpRequestPtr &req, std::function<void(const drogon::HttpResponsePtr &)> &&callback);
 };
 
-} // namespace pt::controllers
+}

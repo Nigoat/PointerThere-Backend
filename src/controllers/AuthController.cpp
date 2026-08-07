@@ -15,8 +15,6 @@
 using namespace pt::controllers;
 using namespace drogon;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 static std::string generateToken(size_t length = 32) {
     static const char chars[] =
         "abcdefghijklmnopqrstuvwxyz"
@@ -43,8 +41,6 @@ static Json::Value buildUserResponse(const orm::Row &row, const std::string &jwt
     return user;
 }
 
-// ── Register ─────────────────────────────────────────────────────────────────
-
 void AuthController::doRegister(const HttpRequestPtr &req,
                                 std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body     = req->getJsonObject();
@@ -65,7 +61,6 @@ void AuthController::doRegister(const HttpRequestPtr &req,
         if (!valid) { cb(pt::errorResponse(k400BadRequest, "CAPTCHA verification failed.")); return; }
 
         auto db = drogon::app().getDbClient();
-        // Check if username/email already exists
         db->execSqlAsync(
             "SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1",
             [=, cb = std::move(cb)](const orm::Result &res) mutable {
@@ -73,9 +68,7 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                     cb(pt::errorResponse(k409Conflict, "Email or username already exists."));
                     return;
                 }
-                // Hash password
                 std::string hash = BCrypt::generateHash(password);
-                // Insert user
                 db->execSqlAsync(
                     "INSERT INTO users (username, email, password_hash) "
                     "VALUES ($1, $2, $3) RETURNING id, username, email, avatar_url, two_factor_enabled",
@@ -102,8 +95,6 @@ void AuthController::doRegister(const HttpRequestPtr &req,
     });
 }
 
-// ── Login ─────────────────────────────────────────────────────────────────────
-
 void AuthController::doLogin(const HttpRequestPtr &req,
                              std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body    = req->getJsonObject();
@@ -128,7 +119,6 @@ void AuthController::doLogin(const HttpRequestPtr &req,
             "FROM users WHERE email = $1 LIMIT 1",
             [=, cb = std::move(cb)](const orm::Result &res) mutable {
                 if (res.empty()) {
-                    // Return new account signal — NextAuth will prompt for username
                     Json::Value j;
                     j["error"] = "NEW_ACCOUNT";
                     auto resp = HttpResponse::newHttpJsonResponse(j);
@@ -158,8 +148,6 @@ void AuthController::doLogin(const HttpRequestPtr &req,
     });
 }
 
-// ── OAuth (Discord / Google) ──────────────────────────────────────────────────
-
 void AuthController::doOAuth(const HttpRequestPtr &req,
                               std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body       = req->getJsonObject();
@@ -179,12 +167,10 @@ void AuthController::doOAuth(const HttpRequestPtr &req,
     std::string idColumn = (provider == "discord") ? "discord_id" : "google_id";
     auto db = drogon::app().getDbClient();
 
-    // Try to find existing user by provider ID
     db->execSqlAsync(
         "SELECT id, username, email, avatar_url, two_factor_enabled FROM users WHERE " + idColumn + " = $1 LIMIT 1",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (!res.empty()) {
-                // Existing user — return token
                 auto row = res[0];
                 auto token = pt::JwtHelper::instance().generate(
                     std::to_string(row["id"].as<long long>()),
@@ -192,7 +178,6 @@ void AuthController::doOAuth(const HttpRequestPtr &req,
                 cb(pt::okResponse(buildUserResponse(row, token)));
                 return;
             }
-            // New OAuth user — upsert by email
             auto db2 = drogon::app().getDbClient();
             std::string sql = (provider == "discord")
                 ? "INSERT INTO users (username, email, avatar_url, discord_id, email_verified) "
@@ -256,7 +241,6 @@ void AuthController::verifyEmail(const HttpRequestPtr &req,
 
 void AuthController::forgotPassword(const HttpRequestPtr &req,
                                     std::function<void(const HttpResponsePtr &)> &&cb) {
-    // Always return 200 to avoid email enumeration
     auto body  = req->getJsonObject();
     auto email = (*body)["email"].asString();
     auto resetToken = generateToken(48);
@@ -266,7 +250,6 @@ void AuthController::forgotPassword(const HttpRequestPtr &req,
         [](const orm::Result &) {},
         [](const drogon::orm::DrogonDbException &) {},
         resetToken, email);
-    // TODO: send email via Resend API
     Json::Value j; j["ok"] = true;
     cb(pt::okResponse(j));
 }

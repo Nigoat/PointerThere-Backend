@@ -10,14 +10,10 @@
 #include <drogon/drogon.h>
 #include <bcrypt/BCrypt.hpp>
 #include <random>
-#include <sha256/sha256.h>   // use Drogon's bundled SHA256, or openssl
+#include <sha256/sha256.h>
 
 using namespace pt::controllers;
 using namespace drogon;
-
-// ═══════════════════════════════════════════════════════════
-//  Records
-// ═══════════════════════════════════════════════════════════
 
 void RecordsController::submitRecord(const HttpRequestPtr &req,
                                       std::function<void(const HttpResponsePtr &)> &&cb) {
@@ -42,7 +38,6 @@ void RecordsController::submitRecord(const HttpRequestPtr &req,
     pt::verifyTurnstile(cfToken, cfSecret, [=, cb = std::move(cb)](bool valid) mutable {
         if (!valid) { cb(pt::errorResponse(k400BadRequest, "CAPTCHA verification failed.")); return; }
 
-        // Check if level exists
         auto db = drogon::app().getDbClient();
         db->execSqlAsync(
             "SELECT id FROM demon_levels WHERE name ILIKE $1 LIMIT 1",
@@ -52,7 +47,6 @@ void RecordsController::submitRecord(const HttpRequestPtr &req,
                 }
                 long long levelId = res[0]["id"].as<long long>();
 
-                // Check for timeout
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
                     "SELECT timeout_until FROM users WHERE username ILIKE $1 AND timeout_until > NOW() LIMIT 1",
@@ -60,7 +54,6 @@ void RecordsController::submitRecord(const HttpRequestPtr &req,
                         if (!tout.empty()) {
                             cb(pt::errorResponse(k403Forbidden, "You are currently timed out from submitting records.")); return;
                         }
-                        // Check for duplicate pending submission
                         auto db3 = drogon::app().getDbClient();
                         db3->execSqlAsync(
                             "SELECT id FROM records WHERE level_id = $1 AND player_name ILIKE $2 AND status = 'pending' LIMIT 1",
@@ -137,10 +130,6 @@ void RecordsController::getRecent(const HttpRequestPtr &req,
         limit, offset);
 }
 
-// ═══════════════════════════════════════════════════════════
-//  Rankings
-// ═══════════════════════════════════════════════════════════
-
 void RankingsController::getRankings(const HttpRequestPtr &req,
                                       std::function<void(const HttpResponsePtr &)> &&cb) {
     auto continent = req->getParameter("continent");
@@ -200,12 +189,7 @@ void RankingsController::getRankings(const HttpRequestPtr &req,
         });
 }
 
-// ═══════════════════════════════════════════════════════════
-//  API Keys
-// ═══════════════════════════════════════════════════════════
-
 static std::string generateApiKey() {
-    // Format: pt_<32 random hex chars>
     std::random_device rd;
     std::mt19937_64 gen(rd());
     std::uniform_int_distribution<uint64_t> dis;
@@ -215,7 +199,6 @@ static std::string generateApiKey() {
 }
 
 static std::string sha256Hex(const std::string &input) {
-    // Use OpenSSL SHA256
     unsigned char hash[32];
     SHA256(reinterpret_cast<const unsigned char*>(input.data()), input.size(), hash);
     std::ostringstream ss;
@@ -248,7 +231,6 @@ void ApiKeysController::getKeys(const HttpRequestPtr &req,
                 arr.append(k);
             }
             j["keys"] = arr;
-            // Also return monthly usage totals
             Json::Value usage;
             int total = 0;
             for (auto &row : res) total += row["monthly_usage"].as<int>();
@@ -277,7 +259,6 @@ void ApiKeysController::createKey(const HttpRequestPtr &req,
     auto userId = std::stoll(payload->user_id);
     auto db = drogon::app().getDbClient();
 
-    // Enforce max 5 keys
     db->execSqlAsync("SELECT COUNT(*) FROM api_keys WHERE user_id = $1",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res[0][0].as<int>() >= 5) {
@@ -293,7 +274,7 @@ void ApiKeysController::createKey(const HttpRequestPtr &req,
                 "VALUES ($1, $2, $3, $4) RETURNING id, name, key_prefix, created_at::text",
                 [=, cb = std::move(cb)](const orm::Result &r) mutable {
                     Json::Value j;
-                    j["key"] = rawKey;  // Only time the full key is shown
+                    j["key"] = rawKey;
                     Json::Value apiKey;
                     apiKey["id"]         = r[0]["id"].as<long long>();
                     apiKey["name"]       = r[0]["name"].as<std::string>();
@@ -337,7 +318,6 @@ void ApiKeysController::revokeKey(const HttpRequestPtr &req,
 void ApiKeysController::publicApi(const HttpRequestPtr &req,
                                    std::function<void(const HttpResponsePtr &)> &&cb,
                                    const std::string &key) {
-    // Verify key hash
     auto hash = sha256Hex(key);
     auto db   = drogon::app().getDbClient();
     db->execSqlAsync(
@@ -348,12 +328,10 @@ void ApiKeysController::publicApi(const HttpRequestPtr &req,
             auto usage = res[0]["monthly_usage"].as<int>();
             if (usage >= 100000) { cb(pt::errorResponse(k429TooManyRequests, "Monthly rate limit exceeded.")); return; }
 
-            // Increment usage
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync("UPDATE api_keys SET monthly_usage = monthly_usage + 1, last_used_at = NOW() WHERE id = $1",
                 [](const orm::Result &) {}, [](const orm::DrogonDbException &) {}, keyId);
 
-            // Return the full demon list
             auto db3 = drogon::app().getDbClient();
             db3->execSqlAsync(
                 "SELECT id, rank, name, points, verified_by, creators, video_url, difficulty_tier "
@@ -385,10 +363,6 @@ void ApiKeysController::publicApi(const HttpRequestPtr &req,
         },
         hash);
 }
-
-// ═══════════════════════════════════════════════════════════
-//  User Profile
-// ═══════════════════════════════════════════════════════════
 
 void UserController::getMe(const HttpRequestPtr &req,
                             std::function<void(const HttpResponsePtr &)> &&cb) {
@@ -456,7 +430,6 @@ void UserController::deleteMe(const HttpRequestPtr &req,
     if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
 
     auto db = drogon::app().getDbClient();
-    // Soft-ban with 30-day deletion instead of immediate delete (same as ban flow)
     db->execSqlAsync(
         "UPDATE users SET is_banned = TRUE, ban_reason = 'Account deletion requested', "
         "ban_expires_at = NOW() + INTERVAL '30 days' WHERE id = $1",
@@ -501,7 +474,6 @@ void UserController::setup2FA(const HttpRequestPtr &req,
     auto payload = pt::JwtHelper::instance().verify(*tokenOpt);
     if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
 
-    // Generate a random TOTP secret (base32)
     static const char base32chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -509,13 +481,11 @@ void UserController::setup2FA(const HttpRequestPtr &req,
     std::string secret;
     for (int i = 0; i < 32; ++i) secret += base32chars[dis(gen)];
 
-    // Store encrypted secret (for production, encrypt before storing)
     auto db = drogon::app().getDbClient();
     db->execSqlAsync("UPDATE users SET two_factor_secret = $1 WHERE id = $2 RETURNING email, username",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "User not found.")); return; }
             auto username = res[0]["username"].as<std::string>();
-            // Build the otpauth URI
             std::string uri = "otpauth://totp/PointerThere%3A" + username +
                               "?secret=" + secret + "&issuer=PointerThere&algorithm=SHA1&digits=6&period=30";
             Json::Value j; j["uri"] = uri; cb(pt::okResponse(j));
@@ -526,8 +496,6 @@ void UserController::setup2FA(const HttpRequestPtr &req,
 
 void UserController::verify2FA(const HttpRequestPtr &req,
                                 std::function<void(const HttpResponsePtr &)> &&cb) {
-    // In production, use a TOTP library to validate the code against the stored secret.
-    // For now, we enable 2FA assuming the frontend validated the QR code was scanned.
     auto tokenOpt = pt::JwtHelper::extractBearer(req);
     if (!tokenOpt) { cb(pt::errorResponse(k401Unauthorized, "Authentication required.")); return; }
     auto payload = pt::JwtHelper::instance().verify(*tokenOpt);
@@ -553,10 +521,6 @@ void UserController::disable2FA(const HttpRequestPtr &req,
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         std::stoll(payload->user_id));
 }
-
-// ═══════════════════════════════════════════════════════════
-//  Site Settings (public)
-// ═══════════════════════════════════════════════════════════
 
 void SettingsController::getSiteSettings(const HttpRequestPtr &,
                                           std::function<void(const HttpResponsePtr &)> &&cb) {

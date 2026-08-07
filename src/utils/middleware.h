@@ -14,10 +14,6 @@
 
 namespace pt {
 
-/**
- * Middleware: require a valid JWT Bearer token.
- * Sets "user_id" and "email" attributes on the request for use in controllers.
- */
 inline drogon::AdviceCallback requireAuth() {
     return [](const drogon::HttpRequestPtr &req,
               drogon::AdviceNextCallback &&next) {
@@ -37,15 +33,9 @@ inline drogon::AdviceCallback requireAuth() {
     };
 }
 
-/**
- * Middleware: require a valid API key from the database.
- * Used on /api/public/:key/* endpoints.
- */
 inline drogon::AdviceCallback requireApiKey() {
     return [](const drogon::HttpRequestPtr &req,
               drogon::AdviceNextCallback &&next) {
-        // The key is embedded in the path — extracted at route level.
-        // Here we just verify the X-API-Key header or path param exists.
         auto key = req->getParameter("api_key");
         if (key.empty()) {
             auto resp = errorResponse(drogon::k401Unauthorized, "API key required.");
@@ -55,9 +45,6 @@ inline drogon::AdviceCallback requireApiKey() {
     };
 }
 
-/**
- * CORS filter: add permissive headers for dev; restrict origin in prod.
- */
 class CorsFilter : public drogon::HttpFilter<CorsFilter> {
 public:
     void doFilter(const drogon::HttpRequestPtr &req,
@@ -82,4 +69,4 @@ public:
     }
 };
 
-} // namespace pt
+}

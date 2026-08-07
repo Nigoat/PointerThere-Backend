@@ -8,13 +8,6 @@
 
 namespace pt::controllers {
 
-/**
- * GET  /api/list             — paginated list with filters
- * GET  /api/list/featured    — featured demon
- * GET  /api/list/movements   — recent rank movements
- * GET  /api/list/:id         — single demon detail
- * GET  /api/list/:id/records — approved records for a demon
- */
 class ListController : public drogon::HttpController<ListController> {
 public:
     METHOD_LIST_BEGIN
@@ -32,4 +25,4 @@ public:
     void getLevelRecs(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&, long long id);
 };
 
-} // namespace pt::controllers
+}

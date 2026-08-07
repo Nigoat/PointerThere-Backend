@@ -12,10 +12,6 @@
 
 namespace pt {
 
-/**
- * Validates a Cloudflare Turnstile token server-side.
- * Calls CF's siteverify endpoint and invokes callback(valid).
- */
 inline void verifyTurnstile(const std::string &token,
                              const std::string &secret,
                              std::function<void(bool)> callback) {
@@ -40,7 +36,6 @@ inline void verifyTurnstile(const std::string &token,
 
         if (res != CURLE_OK) { cb(false); return; }
 
-        // Parse {"success": true|false}
         Json::CharReaderBuilder builder;
         Json::Value root;
         std::istringstream ss(responseBody);
@@ -53,4 +48,4 @@ inline void verifyTurnstile(const std::string &token,
     });
 }
 
-} // namespace pt
+}

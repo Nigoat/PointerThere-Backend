@@ -10,11 +10,7 @@
 using namespace pt::controllers;
 using namespace drogon;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 static bool isAdmin(const HttpRequestPtr &req) {
-    // The frontend sets a secure httpOnly cookie "admin_session"
-    // which is forwarded to the backend. We verify it against env var.
     auto cookie = req->getCookie("admin_session");
     return !cookie.empty() && cookie == pt::env("ADMIN_SESSION_SECRET");
 }
@@ -22,7 +18,6 @@ static bool isAdmin(const HttpRequestPtr &req) {
 #define REQUIRE_ADMIN(req, cb) \
     if (!isAdmin(req)) { cb(pt::errorResponse(k401Unauthorized, "Admin access required.")); return; }
 
-// ── POST /api/admin/login ─────────────────────────────────────────────────────
 void AdminController::login(const HttpRequestPtr &req,
                             std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body = req->getJsonObject();
@@ -43,12 +38,10 @@ void AdminController::login(const HttpRequestPtr &req,
     Json::Value j;
     j["ok"] = true;
     auto resp = pt::okResponse(j);
-    // Set httpOnly cookie for session
     resp->addCookie("admin_session", secret, 60 * 60 * 8, "/", "", false, true);
     cb(resp);
 }
 
-// ── GET /api/admin/stats ──────────────────────────────────────────────────────
 void AdminController::getStats(const HttpRequestPtr &req,
                                 std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);
@@ -76,7 +69,6 @@ void AdminController::getStats(const HttpRequestPtr &req,
         });
 }
 
-// ── GET /api/admin/records/pending ────────────────────────────────────────────
 void AdminController::getPending(const HttpRequestPtr &req,
                                   std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);
@@ -122,7 +114,6 @@ void AdminController::getPending(const HttpRequestPtr &req,
         limit, offset);
 }
 
-// ── PATCH /api/admin/records/:id ──────────────────────────────────────────────
 void AdminController::updateRecord(const HttpRequestPtr &req,
                                     std::function<void(const HttpResponsePtr &)> &&cb,
                                     long long id) {
@@ -138,7 +129,6 @@ void AdminController::updateRecord(const HttpRequestPtr &req,
         "UPDATE records SET status = $1, reviewed_at = NOW() WHERE id = $2 RETURNING id, level_id, player_name, progress",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "Record not found.")); return; }
-            // If accepted, update user points based on level position
             if (status == "accepted") {
                 auto db2 = drogon::app().getDbClient();
                 auto levelId = res[0]["level_id"].as<long long>();
@@ -158,7 +148,6 @@ void AdminController::updateRecord(const HttpRequestPtr &req,
         status, id);
 }
 
-// ── GET /api/admin/users ──────────────────────────────────────────────────────
 void AdminController::getUsers(const HttpRequestPtr &req,
                                 std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);
@@ -226,13 +215,11 @@ void AdminController::getUsers(const HttpRequestPtr &req,
     }
 }
 
-// ── PATCH /api/admin/users/:id ────────────────────────────────────────────────
 void AdminController::updateUser(const HttpRequestPtr &req,
                                   std::function<void(const HttpResponsePtr &)> &&cb,
                                   long long id) {
     REQUIRE_ADMIN(req, cb);
     auto body = req->getJsonObject();
-    // Construct dynamic update — only update provided fields
     std::string sets;
     std::vector<std::string> params;
     int idx = 1;
@@ -251,7 +238,6 @@ void AdminController::updateUser(const HttpRequestPtr &req,
 
     auto db = drogon::app().getDbClient();
     std::string sql = "UPDATE users SET " + sets + " WHERE id = $" + std::to_string(idx) + " RETURNING id";
-    // Execute with dynamic params — simplified single/double param handling
     if (params.size() == 1) {
         db->execSqlAsync(sql, [cb](const orm::Result &r) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
@@ -267,7 +253,6 @@ void AdminController::updateUser(const HttpRequestPtr &req,
     }
 }
 
-// ── POST /api/admin/users/:id/ban ─────────────────────────────────────────────
 void AdminController::banUser(const HttpRequestPtr &req,
                                std::function<void(const HttpResponsePtr &)> &&cb,
                                long long id) {
@@ -306,7 +291,6 @@ void AdminController::timeoutUser(const HttpRequestPtr &req,
         std::to_string(days), id);
 }
 
-// ── Levels CRUD ───────────────────────────────────────────────────────────────
 void AdminController::getLevels(const HttpRequestPtr &req,
                                  std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);
@@ -342,13 +326,11 @@ void AdminController::addLevel(const HttpRequestPtr &req,
     auto vid   = (*body)["video_url"].asString();
     auto tier  = (*body)["difficulty_tier"].asString();
     auto pts   = (*body)["points"].asDouble();
-    // Build creators array string
     std::string creatorsArr = "{";
     for (auto &c : (*body)["creators"]) { if (creatorsArr.size() > 1) creatorsArr += ","; creatorsArr += c.asString(); }
     creatorsArr += "}";
 
     auto db = drogon::app().getDbClient();
-    // Shift existing ranks up to make room
     db->execSqlAsync("UPDATE demon_levels SET rank = rank + 1 WHERE rank >= $1",
         [=, cb = std::move(cb)](const orm::Result &) mutable {
             auto db2 = drogon::app().getDbClient();
@@ -357,7 +339,6 @@ void AdminController::addLevel(const HttpRequestPtr &req,
                 "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, rank, name, points, verified_by, difficulty_tier",
                 [=, cb = std::move(cb)](const orm::Result &res) mutable {
                     if (res.empty()) { cb(pt::errorResponse(k500InternalServerError, "Insert failed.")); return; }
-                    // Record movement
                     auto levelId = res[0]["id"].as<long long>();
                     auto db3 = drogon::app().getDbClient();
                     db3->execSqlAsync("INSERT INTO list_movements (level_id, old_rank, new_rank) VALUES ($1, NULL, $2)",
@@ -378,7 +359,6 @@ void AdminController::updateLevel(const HttpRequestPtr &req,
                                    long long id) {
     REQUIRE_ADMIN(req, cb);
     auto body = req->getJsonObject();
-    // Record old rank for movement history
     auto db = drogon::app().getDbClient();
     auto name  = (*body)["name"].asString();
     auto rank  = (*body)["rank"].asInt();
@@ -422,7 +402,6 @@ void AdminController::deleteLevel(const HttpRequestPtr &req,
         id);
 }
 
-// ── Appeals ───────────────────────────────────────────────────────────────────
 void AdminController::getAppeals(const HttpRequestPtr &req,
                                   std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);
@@ -474,7 +453,6 @@ void AdminController::updateAppeal(const HttpRequestPtr &req,
         status, id);
 }
 
-// ── Settings ──────────────────────────────────────────────────────────────────
 void AdminController::getSettings(const HttpRequestPtr &req,
                                    std::function<void(const HttpResponsePtr &)> &&cb) {
     REQUIRE_ADMIN(req, cb);

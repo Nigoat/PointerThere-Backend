@@ -11,7 +11,6 @@
 using namespace pt::controllers;
 using namespace drogon;
 
-// ── Helper: row → JSON ────────────────────────────────────────────────────────
 static Json::Value levelToJson(const orm::Row &row) {
     Json::Value j;
     j["id"]             = row["id"].as<long long>();
@@ -24,10 +23,8 @@ static Json::Value levelToJson(const orm::Row &row) {
     j["difficulty_tier"] = row["difficulty_tier"].as<std::string>();
     j["created_at"]     = row["created_at"].as<std::string>();
 
-    // creators is a TEXT[] — comes back as "{foo,bar}"
     auto creatorsRaw = row["creators"].as<std::string>();
     Json::Value creators(Json::arrayValue);
-    // Strip braces and split by comma
     if (creatorsRaw.size() > 2) {
         auto inner = creatorsRaw.substr(1, creatorsRaw.size() - 2);
         std::stringstream ss(inner);
@@ -42,7 +39,6 @@ static Json::Value levelToJson(const orm::Row &row) {
     return j;
 }
 
-// ── GET /api/list ─────────────────────────────────────────────────────────────
 void ListController::getList(const HttpRequestPtr &req,
                               std::function<void(const HttpResponsePtr &)> &&cb, int) {
     auto page    = std::max(1, std::stoi(req->getParameter("page").empty() ? "1" : req->getParameter("page")));
@@ -87,24 +83,11 @@ void ListController::getList(const HttpRequestPtr &req,
                     " OFFSET $" + std::to_string(paramIdx + 1);
 
     auto db = drogon::app().getDbClient();
-
-    // Build dynamic query
-    auto buildArgs = [&](const std::vector<std::string> &extraParams) -> std::string {
-        // Drogon doesn't support truly variadic SQL easily, so we'll use the simplest approach:
-        // Build the full query with embedded parameters for the complex case.
-        // For production, use prepared statements. This is a clean implementation.
-        return "";
-    };
-
-    // Execute with up to 4 bind params + 2 for limit/offset
-    // For simplicity, we handle all filter combos:
     auto limitStr = std::to_string(limit);
     auto offsetStr = std::to_string(offset);
     params.push_back(limitStr);
     params.push_back(offsetStr);
 
-    // Due to Drogon's type-safe variadic API limitations with dynamic params,
-    // we use raw query building with server-side escaping via the ORM client.
     db->execSqlAsync(countSql + ";",
         [=, cb = std::move(cb), dataSql = dataSql](const orm::Result &countRes) mutable {
             long long total = countRes[0][0].as<long long>();
@@ -127,7 +110,6 @@ void ListController::getList(const HttpRequestPtr &req,
         });
 }
 
-// ── GET /api/list/featured ────────────────────────────────────────────────────
 void ListController::getFeatured(const HttpRequestPtr &,
                                   std::function<void(const HttpResponsePtr &)> &&cb) {
     auto db = drogon::app().getDbClient();
@@ -140,7 +122,6 @@ void ListController::getFeatured(const HttpRequestPtr &,
         "WHERE s.id = 1 LIMIT 1",
         [cb](const orm::Result &res) mutable {
             if (res.empty()) {
-                // Fall back to rank 1
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
                     "SELECT id, rank, name, points, verified_by, creators, video_url, "
@@ -166,7 +147,6 @@ void ListController::getFeatured(const HttpRequestPtr &,
         });
 }
 
-// ── GET /api/list/movements ───────────────────────────────────────────────────
 void ListController::getMovements(const HttpRequestPtr &,
                                    std::function<void(const HttpResponsePtr &)> &&cb) {
     auto db = drogon::app().getDbClient();
@@ -195,7 +175,6 @@ void ListController::getMovements(const HttpRequestPtr &,
         });
 }
 
-// ── GET /api/list/:id ─────────────────────────────────────────────────────────
 void ListController::getLevel(const HttpRequestPtr &,
                                std::function<void(const HttpResponsePtr &)> &&cb,
                                long long id) {
@@ -216,7 +195,6 @@ void ListController::getLevel(const HttpRequestPtr &,
         id);
 }
 
-// ── GET /api/list/:id/records ─────────────────────────────────────────────────
 void ListController::getLevelRecs(const HttpRequestPtr &,
                                    std::function<void(const HttpResponsePtr &)> &&cb,
                                    long long id) {

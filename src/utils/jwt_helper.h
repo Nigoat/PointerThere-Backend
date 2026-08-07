@@ -61,9 +61,6 @@ public:
         }
     }
 
-    /**
-     * Extract bearer token from "Authorization: Bearer <token>" header.
-     */
     static std::optional<std::string> extractBearer(const drogon::HttpRequestPtr &req) {
         auto auth = req->getHeader("Authorization");
         if (auth.rfind("Bearer ", 0) == 0) {
@@ -76,4 +73,4 @@ private:
     std::string m_secret;
 };
 
-} // namespace pt
+}

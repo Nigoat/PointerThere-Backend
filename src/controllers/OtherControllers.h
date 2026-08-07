@@ -8,10 +8,6 @@
 
 namespace pt::controllers {
 
-/**
- * POST /api/records              — submit a record (auth required, Turnstile)
- * GET  /api/records/recent       — recent accepted records for home page
- */
 class RecordsController : public drogon::HttpController<RecordsController> {
 public:
     METHOD_LIST_BEGIN
@@ -23,9 +19,6 @@ public:
     void getRecent   (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 };
 
-/**
- * GET  /api/rankings             — top 1000 players ranked by points
- */
 class RankingsController : public drogon::HttpController<RankingsController> {
 public:
     METHOD_LIST_BEGIN
@@ -35,12 +28,6 @@ public:
     void getRankings(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 };
 
-/**
- * GET   /api/keys                — list user's API keys (auth required)
- * POST  /api/keys                — generate new API key (auth required)
- * DELETE /api/keys/:id           — revoke API key (auth required)
- * GET   /api/public/:key/demons  — public API endpoint (key from path)
- */
 class ApiKeysController : public drogon::HttpController<ApiKeysController> {
 public:
     METHOD_LIST_BEGIN
@@ -56,15 +43,6 @@ public:
     void publicApi (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&, const std::string &key);
 };
 
-/**
- * GET   /api/user/me             — get current user profile (auth required)
- * PATCH /api/user/me             — update profile (auth required)
- * DELETE /api/user/me            — delete account (auth required)
- * POST  /api/user/change-password
- * POST  /api/user/2fa/setup
- * POST  /api/user/2fa/verify
- * DELETE /api/user/2fa
- */
 class UserController : public drogon::HttpController<UserController> {
 public:
     METHOD_LIST_BEGIN
@@ -86,9 +64,6 @@ public:
     void disable2FA     (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 };
 
-/**
- * GET   /api/settings/site       — public site settings (social links, costs)
- */
 class SettingsController : public drogon::HttpController<SettingsController> {
 public:
     METHOD_LIST_BEGIN
@@ -98,4 +73,4 @@ public:
     void getSiteSettings(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 };
 
-} // namespace pt::controllers
+}
