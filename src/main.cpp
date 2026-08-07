@@ -52,23 +52,9 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    app.createDbClient(
-        "postgresql",
-        "",
-        5432,
-        "",
-        "",
-        "",
-        10,
-        "default",
-        dbUrl,
-        false,
-        "",
-        0.0,
-        false
-    );
+    app.addDbClient(dbUrl, 10, drogon::orm::ClientType::PostgreSQL, "default");
 
-    app.registerFilter<pt::CorsFilter>();
+    app.registerFilter(std::make_shared<pt::CorsFilter>());
 
     app.setCustom404Page([] {
         auto resp = drogon::HttpResponse::newHttpJsonResponse([] {
