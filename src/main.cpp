@@ -31,10 +31,8 @@ static void loadEnvFile(const std::string &path) {
     }
 }
 
-// Parse PostgreSQL connection URL: postgresql://user:password@host:port/database
 static void parseDbUrl(const std::string &url, std::string &host, unsigned short &port, 
                        std::string &user, std::string &password, std::string &database) {
-    // Pattern: postgresql://user:password@host:port/database
     std::regex pattern(R"(postgresql://([^:]+):([^@]+)@([^:/]+):(\d+)/(.+))");
     std::smatch match;
     
