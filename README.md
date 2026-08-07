@@ -1,6 +1,6 @@
 # PointerThere Backend
 
-High-performance C++20 backend for PointerThere built with the Drogon Web Framework.
+PointerThere C++20 backend for PointerThere built with the Drogon Web Framework.
 
 Licensed under the GNU General Public License v3.0 (GPLv3).
 
@@ -17,7 +17,7 @@ Licensed under the GNU General Public License v3.0 (GPLv3).
 Initialize database tables using the schema file:
 
 ```bash
-psql "YOUR_POSTGRESQL_CONNECTION_STRING" -f schema.sql
+psql "connection_string" -f schema.sql
 ```
 
 ## Build Instructions
