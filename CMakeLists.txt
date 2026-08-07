@@ -13,6 +13,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG   "-g -O0 -fsanitize=address")
 
 find_package(Drogon REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
 
 file(GLOB_RECURSE SOURCES
   "src/*.cpp"
@@ -23,10 +25,11 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 target_include_directories(${PROJECT_NAME} PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/src
+  /usr/local/include
   ${Drogon_INCLUDE_DIRS}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon)
+target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon OpenSSL::SSL OpenSSL::Crypto ${CURL_LIBRARIES} pq)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 
