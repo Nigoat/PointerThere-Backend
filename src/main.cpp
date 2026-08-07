@@ -8,7 +8,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
-#include <regex>
 #include "utils/env.h"
 #include "utils/jwt_helper.h"
 #include "utils/middleware.h"
@@ -28,24 +27,6 @@ static void loadEnvFile(const std::string &path) {
         val.erase(0, val.find_first_not_of(" \t\"'"));
         val.erase(val.find_last_not_of(" \t\"'") + 1);
         setenv(key.c_str(), val.c_str(), 0);
-    }
-}
-
-// Parse PostgreSQL connection URL: postgresql://user:password@host:port/database
-static void parseDbUrl(const std::string &url, std::string &host, std::string &port, 
-                       std::string &user, std::string &password, std::string &database) {
-    // Pattern: postgresql://user:password@host:port/database
-    std::regex pattern(R"(postgresql://([^:]+):([^@]+)@([^:/]+):(\d+)/(.+))");
-    std::smatch match;
-    
-    if (std::regex_match(url, match, pattern)) {
-        user = match[1];
-        password = match[2];
-        host = match[3];
-        port = match[4];
-        database = match[5];
-    } else {
-        throw std::runtime_error("Invalid DATABASE_URL format. Expected: postgresql://user:password@host:port/database");
     }
 }
 
@@ -71,21 +52,8 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    // Parse DATABASE_URL and configure PostgreSQL connection
-    std::string dbHost, dbPort, dbUser, dbPassword, dbName;
-    try {
-        parseDbUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName);
-    } catch (const std::exception &e) {
-        std::cerr << "[PointerThere] ERROR: " << e.what() << "\n";
-        return 1;
-    }
-
     drogon::orm::PostgresConfig pgConfig;
-    pgConfig.host = dbHost;
-    pgConfig.port = std::stoi(dbPort);
-    pgConfig.username = dbUser;
-    pgConfig.password = dbPassword;
-    pgConfig.dbname = dbName;
+    pgConfig.connInfo = dbUrl;
     pgConfig.connectionNumber = 10;
     pgConfig.name = "default";
     app.addDbClient(pgConfig);
