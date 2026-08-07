@@ -46,20 +46,38 @@ int main() {
 
     std::cout << "[PointerThere] Backend starting on " << host << ":" << port << "\n";
 
-    drogon::app()
-        .addListener(host, port)
-        .setThreadNum(std::thread::hardware_concurrency())
-        .setLogLevel(trantor::Logger::kInfo)
-        .createDbClient("postgresql", "", 5432, "", "", "", false, dbUrl, 10, "default")
-        .registerFilter<pt::CorsFilter>()
-        .setCustom404Page([] {
-            auto resp = drogon::HttpResponse::newHttpJsonResponse([] {
-                Json::Value j; j["error"] = "Not found."; return j;
-            }());
-            resp->setStatusCode(drogon::k404NotFound);
-            return resp;
-        }())
-        .run();
+    auto &app = drogon::app();
 
+    app.addListener(host, port);
+    app.setThreadNum(std::thread::hardware_concurrency());
+    app.setLogLevel(trantor::Logger::kInfo);
+
+    app.createDbClient(
+        "postgresql",
+        "",
+        5432,
+        "",
+        "",
+        "",
+        10,
+        "default",
+        dbUrl,
+        false,
+        "",
+        0.0,
+        false
+    );
+
+    app.registerFilter<pt::CorsFilter>();
+
+    app.setCustom404Page([] {
+        auto resp = drogon::HttpResponse::newHttpJsonResponse([] {
+            Json::Value j; j["error"] = "Not found."; return j;
+        }());
+        resp->setStatusCode(drogon::k404NotFound);
+        return resp;
+    }());
+
+    app.run();
     return 0;
 }
