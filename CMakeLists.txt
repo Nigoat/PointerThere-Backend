@@ -30,7 +30,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
   ${Drogon_INCLUDE_DIRS}
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Drogon::Drogon OpenSSL::SSL OpenSSL::Crypto ${CURL_LIBRARIES} pq)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+  Drogon::Drogon
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  CURL::libcurl
+)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 

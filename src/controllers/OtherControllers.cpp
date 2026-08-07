@@ -10,7 +10,7 @@
 #include <drogon/drogon.h>
 #include <bcrypt/BCrypt.hpp>
 #include <random>
-#include <sha256/sha256.h>
+#include <openssl/sha.h>
 
 using namespace pt::controllers;
 using namespace drogon;
