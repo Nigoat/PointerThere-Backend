@@ -1,6 +1,6 @@
 /*
  * PointerThere - Next generation Geometry Dash Demon List
- * Copyright (C) 2024 PointerThere — GPLv3
+ * Copyright (C) 2026 PointerThere — GPLv3
  */
 
 #include "AdminController.h"
@@ -28,7 +28,7 @@ void AdminController::login(const HttpRequestPtr &req,
 
     auto expectedUser = pt::env("ADMIN_USERNAME", "Nigoattt");
     auto expectedPass = pt::env("ADMIN_PASSWORD", "XYZ123LMBLABLA1983");
-    auto secret       = pt::env("ADMIN_SESSION_SECRET", "pointerthere_admin_session_secret_2024_secure_key");
+    auto secret       = pt::env("ADMIN_SESSION_SECRET", "pointerthere_admin_session_secret_2026_secure_key");
 
     if (username != expectedUser || password != expectedPass) {
         cb(pt::errorResponse(k401Unauthorized, "Invalid credentials."));

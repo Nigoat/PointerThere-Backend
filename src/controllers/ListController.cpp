@@ -1,6 +1,6 @@
 /*
  * PointerThere - Next generation Geometry Dash Demon List
- * Copyright (C) 2024 PointerThere — GPLv3
+ * Copyright (C) 2026 PointerThere — GPLv3
  */
 
 #include "ListController.h"
