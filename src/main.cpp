@@ -52,15 +52,23 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    app.addDbClient(dbUrl, 10, drogon::orm::ClientType::PostgreSQL, "default");
+    drogon::orm::DbConfig dbConfig;
+    dbConfig.dbType = drogon::orm::ClientType::PostgreSQL;
+    dbConfig.connectionString = dbUrl;
+    dbConfig.connectionNumber = 10;
+    dbConfig.name = "default";
+    app.addDbClient(dbConfig);
 
-    app.registerFilter(std::make_shared<pt::CorsFilter>());
+    app.registerPostHandlingAdvice([](const drogon::HttpRequestPtr &, const drogon::HttpResponsePtr &resp) {
+        pt::addCorsHeaders(resp);
+    });
 
     app.setCustom404Page([] {
         auto resp = drogon::HttpResponse::newHttpJsonResponse([] {
             Json::Value j; j["error"] = "Not found."; return j;
         }());
         resp->setStatusCode(drogon::k404NotFound);
+        pt::addCorsHeaders(resp);
         return resp;
     }());
 
