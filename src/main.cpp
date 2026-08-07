@@ -52,9 +52,12 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    // Create PostgreSQL database client with connection string
-    auto dbClient = drogon::orm::DbClient::newPgClient(dbUrl, 10);
-    app.addDbClient(dbClient);
+    // Configure PostgreSQL connection using conn_str field
+    drogon::orm::PostgresConfig pgConfig;
+    pgConfig.conn_str = dbUrl;
+    pgConfig.connectionNumber = 10;
+    pgConfig.name = "default";
+    app.addDbClient(pgConfig);
 
     app.registerPostHandlingAdvice([](const drogon::HttpRequestPtr &, const drogon::HttpResponsePtr &resp) {
         pt::addCorsHeaders(resp);
