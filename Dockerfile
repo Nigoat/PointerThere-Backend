@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libpq-dev \
     libcurl4-openssl-dev \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Clone and install Drogon framework
@@ -27,11 +26,6 @@ RUN git clone --recursive https://github.com/drogonframework/drogon.git && \
     make -j$(nproc) && \
     make install && \
     cd /tmp && rm -rf drogon
-
-# Install header-only libraries (jwt-cpp & bcrypt)
-RUN mkdir -p /usr/local/include/jwt-cpp /usr/local/include/bcrypt && \
-    wget -O /usr/local/include/jwt-cpp/jwt.h https://raw.githubusercontent.com/Thalhammer/jwt-cpp/master/include/jwt-cpp/jwt.h && \
-    wget -O /usr/local/include/bcrypt/BCrypt.hpp https://raw.githubusercontent.com/tristanpenman/HeaderOnlyBCrypt/master/include/BCrypt.hpp
 
 # Build PointerThere Backend binary
 WORKDIR /app
