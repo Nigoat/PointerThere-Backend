@@ -351,7 +351,7 @@ void ApiKeysController::publicApi(const HttpRequestPtr &req,
                         arr.append(l);
                     }
                     j["demons"] = arr;
-                    j["count"]  = (long long)arr.size();
+                    j["count"]  = static_cast<Json::Int64>(arr.size());
                     cb(pt::okResponse(j));
                 },
                 [cb](const orm::DrogonDbException &e) mutable {

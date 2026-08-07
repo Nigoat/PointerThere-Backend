@@ -35,8 +35,8 @@ int main() {
 
     pt::JwtHelper::instance().setSecret(pt::env("JWT_SECRET", "changeme"));
 
-    auto host = pt::env("HOST", "0.0.0.0");
-    auto port = std::stoi(pt::env("PORT", "8080"));
+    auto host  = pt::env("HOST", "0.0.0.0");
+    auto port  = std::stoi(pt::env("PORT", "8080"));
     auto dbUrl = pt::env("DATABASE_URL");
 
     if (dbUrl.empty()) {
@@ -47,32 +47,11 @@ int main() {
     std::cout << "[PointerThere] Backend starting on " << host << ":" << port << "\n";
 
     drogon::app()
-        .setListeners({{host, port}})
+        .addListener(host, port)
         .setThreadNum(std::thread::hardware_concurrency())
-        .setLogPath("./logs")
         .setLogLevel(trantor::Logger::kInfo)
-        .setDocumentRoot("./static")
-        .addDbClient(drogon::orm::DbConfig{
-            .dbType     = drogon::orm::ClientType::PostgreSQL,
-            .host       = "",
-            .port       = 5432,
-            .databaseName = "",
-            .userName   = "",
-            .password   = "",
-            .connectionString = dbUrl,
-            .connectionNumber = 10,
-            .name       = "default"
-        })
+        .createDbClient("postgresql", "", 5432, "", "", "", false, dbUrl, 10, "default")
         .registerFilter<pt::CorsFilter>()
-        .registerHandlerViaRegex(".*",
-            [](const drogon::HttpRequestPtr &,
-               std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
-                auto resp = drogon::HttpResponse::newHttpResponse();
-                resp->setStatusCode(drogon::k404NotFound);
-                pt::CorsFilter::addCorsHeaders(resp);
-                cb(resp);
-            },
-            {drogon::Options})
         .setCustom404Page([] {
             auto resp = drogon::HttpResponse::newHttpJsonResponse([] {
                 Json::Value j; j["error"] = "Not found."; return j;
