@@ -13,7 +13,7 @@ using namespace drogon;
 
 static Json::Value levelToJson(const orm::Row &row) {
     Json::Value j;
-    j["id"]             = row["id"].as<long long>();
+    j["id"]             = static_cast<Json::Int64>(row["id"].as<long long>());
     j["rank"]           = row["rank"].as<int>();
     j["name"]           = row["name"].as<std::string>();
     j["points"]         = row["points"].as<double>();
@@ -95,9 +95,9 @@ void ListController::getList(const HttpRequestPtr &req,
             db2->execSqlAsync(dataSql + ";",
                 [=, cb = std::move(cb), total = total](const orm::Result &dataRes) mutable {
                     Json::Value j;
-                    j["total"]  = (long long)total;
+                    j["total"]  = static_cast<Json::Int64>(total);
                     Json::Value levels(Json::arrayValue);
-                    for (auto &row : dataRes) levels.append(levelToJson(row));
+                    for (const auto &row : dataRes) levels.append(levelToJson(row));
                     j["levels"] = levels;
                     cb(pt::okResponse(j));
                 },
@@ -157,10 +157,10 @@ void ListController::getMovements(const HttpRequestPtr &,
         [cb](const orm::Result &res) mutable {
             Json::Value j;
             Json::Value arr(Json::arrayValue);
-            for (auto &row : res) {
+            for (const auto &row : res) {
                 Json::Value m;
-                m["id"]         = row["id"].as<long long>();
-                m["level_id"]   = row["level_id"].as<long long>();
+                m["id"]         = static_cast<Json::Int64>(row["id"].as<long long>());
+                m["level_id"]   = static_cast<Json::Int64>(row["level_id"].as<long long>());
                 m["level_name"] = row["level_name"].as<std::string>();
                 m["old_rank"]   = row["old_rank"].isNull() ? Json::nullValue : Json::Value(row["old_rank"].as<int>());
                 m["new_rank"]   = row["new_rank"].as<int>();
@@ -205,9 +205,9 @@ void ListController::getLevelRecs(const HttpRequestPtr &,
         [cb](const orm::Result &res) mutable {
             Json::Value j;
             Json::Value arr(Json::arrayValue);
-            for (auto &row : res) {
+            for (const auto &row : res) {
                 Json::Value r;
-                r["id"]           = row["id"].as<long long>();
+                r["id"]           = static_cast<Json::Int64>(row["id"].as<long long>());
                 r["player_name"]  = row["player_name"].as<std::string>();
                 r["progress"]     = row["progress"].as<int>();
                 r["video_url"]    = row["video_url"].as<std::string>();

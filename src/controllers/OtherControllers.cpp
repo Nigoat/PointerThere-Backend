@@ -45,7 +45,7 @@ void RecordsController::submitRecord(const HttpRequestPtr &req,
                 if (res.empty()) {
                     cb(pt::errorResponse(k404NotFound, "Level not found on the list.")); return;
                 }
-                long long levelId = res[0]["id"].as<long long>();
+                long long levelId = res[0]["id"].as<Json::Int64>();
 
                 auto db2 = drogon::app().getDbClient();
                 db2->execSqlAsync(
@@ -68,7 +68,7 @@ void RecordsController::submitRecord(const HttpRequestPtr &req,
                                     [cb](const orm::Result &r) mutable {
                                         Json::Value j;
                                         j["ok"] = true;
-                                        j["record_id"] = r[0]["id"].as<long long>();
+                                        j["record_id"] = r[0]["id"].as<Json::Int64>();
                                         cb(pt::okResponse(j));
                                     },
                                     [cb](const orm::DrogonDbException &e) mutable {
@@ -111,10 +111,10 @@ void RecordsController::getRecent(const HttpRequestPtr &req,
             Json::Value arr(Json::arrayValue);
             for (auto &row : res) {
                 Json::Value r;
-                r["id"]           = row["id"].as<long long>();
+                r["id"]           = row["id"].as<Json::Int64>();
                 r["player_name"]  = row["player_name"].as<std::string>();
                 r["level_name"]   = row["level_name"].as<std::string>();
-                r["level_id"]     = row["level_id"].as<long long>();
+                r["level_id"]     = row["level_id"].as<Json::Int64>();
                 r["progress"]     = row["progress"].as<int>();
                 r["video_url"]    = row["video_url"].as<std::string>();
                 r["status"]       = row["status"].as<std::string>();
@@ -171,7 +171,7 @@ void RankingsController::getRankings(const HttpRequestPtr &req,
             int rank = 1;
             for (auto &row : res) {
                 Json::Value p;
-                p["id"]            = row["id"].as<long long>();
+                p["id"]            = row["id"].as<Json::Int64>();
                 p["username"]      = row["username"].as<std::string>();
                 p["country"]       = row["country"].as<std::string>();
                 p["continent"]     = row["continent"].as<std::string>();
@@ -222,7 +222,7 @@ void ApiKeysController::getKeys(const HttpRequestPtr &req,
             Json::Value arr(Json::arrayValue);
             for (auto &row : res) {
                 Json::Value k;
-                k["id"]           = row["id"].as<long long>();
+                k["id"]           = row["id"].as<Json::Int64>();
                 k["name"]         = row["name"].as<std::string>();
                 k["key_prefix"]   = row["key_prefix"].as<std::string>();
                 k["created_at"]   = row["created_at"].as<std::string>();
@@ -276,7 +276,7 @@ void ApiKeysController::createKey(const HttpRequestPtr &req,
                     Json::Value j;
                     j["key"] = rawKey;
                     Json::Value apiKey;
-                    apiKey["id"]         = r[0]["id"].as<long long>();
+                    apiKey["id"]         = r[0]["id"].as<Json::Int64>();
                     apiKey["name"]       = r[0]["name"].as<std::string>();
                     apiKey["key_prefix"] = r[0]["key_prefix"].as<std::string>();
                     apiKey["created_at"] = r[0]["created_at"].as<std::string>();
@@ -324,7 +324,7 @@ void ApiKeysController::publicApi(const HttpRequestPtr &req,
         "SELECT id, monthly_usage FROM api_keys WHERE key_hash = $1 LIMIT 1",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k401Unauthorized, "Invalid API key.")); return; }
-            auto keyId = res[0]["id"].as<long long>();
+            auto keyId = res[0]["id"].as<Json::Int64>();
             auto usage = res[0]["monthly_usage"].as<int>();
             if (usage >= 100000) { cb(pt::errorResponse(k429TooManyRequests, "Monthly rate limit exceeded.")); return; }
 
@@ -341,7 +341,7 @@ void ApiKeysController::publicApi(const HttpRequestPtr &req,
                     Json::Value arr(Json::arrayValue);
                     for (auto &row : r) {
                         Json::Value l;
-                        l["id"]             = row["id"].as<long long>();
+                        l["id"]             = row["id"].as<Json::Int64>();
                         l["rank"]           = row["rank"].as<int>();
                         l["name"]           = row["name"].as<std::string>();
                         l["points"]         = row["points"].as<double>();
@@ -379,9 +379,9 @@ void UserController::getMe(const HttpRequestPtr &req,
         "FROM users WHERE id = $1 LIMIT 1",
         [cb](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "User not found.")); return; }
-            auto &row = res[0];
+            auto row = res[0];
             Json::Value j; Json::Value u;
-            u["id"]               = row["id"].as<long long>();
+            u["id"]               = row["id"].as<Json::Int64>();
             u["username"]         = row["username"].as<std::string>();
             u["email"]            = row["email"].as<std::string>();
             u["bio"]              = row["bio"].as<std::string>();
@@ -530,7 +530,7 @@ void SettingsController::getSiteSettings(const HttpRequestPtr &,
         "db_cost, deploy_cost, bot_cost FROM site_settings WHERE id = 1",
         [cb](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "Settings not configured.")); return; }
-            auto &row = res[0];
+            auto row = res[0];
             Json::Value j; Json::Value s;
             s["discord_url"]  = row["discord_url"].as<std::string>();
             s["twitter_url"]  = row["twitter_url"].as<std::string>();

@@ -32,7 +32,7 @@ static std::string generateToken(size_t length = 32) {
 
 static Json::Value buildUserResponse(const orm::Row &row, const std::string &jwtToken) {
     Json::Value user;
-    user["id"]       = row["id"].as<long long>();
+    user["id"]       = row["id"].as<Json::Int64>();
     user["username"] = row["username"].as<std::string>();
     user["email"]    = row["email"].as<std::string>();
     user["avatar_url"] = row["avatar_url"].isNull() ? "" : row["avatar_url"].as<std::string>();
@@ -79,7 +79,7 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                         }
                         auto row = res2[0];
                         auto token = pt::JwtHelper::instance().generate(
-                            std::to_string(row["id"].as<long long>()),
+                            std::to_string(row["id"].as<Json::Int64>()),
                             row["email"].as<std::string>());
                         cb(pt::okResponse(buildUserResponse(row, token)));
                     },
@@ -137,7 +137,7 @@ void AuthController::doLogin(const HttpRequestPtr &req,
                     return;
                 }
                 auto token = pt::JwtHelper::instance().generate(
-                    std::to_string(row["id"].as<long long>()),
+                    std::to_string(row["id"].as<Json::Int64>()),
                     row["email"].as<std::string>());
                 cb(pt::okResponse(buildUserResponse(row, token)));
             },
@@ -173,7 +173,7 @@ void AuthController::doOAuth(const HttpRequestPtr &req,
             if (!res.empty()) {
                 auto row = res[0];
                 auto token = pt::JwtHelper::instance().generate(
-                    std::to_string(row["id"].as<long long>()),
+                    std::to_string(row["id"].as<Json::Int64>()),
                     row["email"].as<std::string>());
                 cb(pt::okResponse(buildUserResponse(row, token)));
                 return;
@@ -198,7 +198,7 @@ void AuthController::doOAuth(const HttpRequestPtr &req,
                     }
                     auto row = res2[0];
                     auto token = pt::JwtHelper::instance().generate(
-                        std::to_string(row["id"].as<long long>()),
+                        std::to_string(row["id"].as<Json::Int64>()),
                         row["email"].as<std::string>());
                     cb(pt::okResponse(buildUserResponse(row, token)));
                 },

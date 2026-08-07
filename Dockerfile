@@ -1,9 +1,7 @@
-# ── Stage 1: Build Drogon & PointerThere Backend ──────────
 FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install build dependencies & libraries
 RUN apt-get update && apt-get install -y \
     g++ \
     cmake \
@@ -17,7 +15,6 @@ RUN apt-get update && apt-get install -y \
     libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone and install Drogon framework
 WORKDIR /tmp
 RUN git clone --recursive https://github.com/drogonframework/drogon.git && \
     cd drogon && \
@@ -27,7 +24,7 @@ RUN git clone --recursive https://github.com/drogonframework/drogon.git && \
     make install && \
     cd /tmp && rm -rf drogon
 
-# Build PointerThere Backend binary
+ARG CACHEBUST=1
 WORKDIR /app
 COPY . .
 
@@ -35,12 +32,10 @@ RUN mkdir build && cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make -j$(nproc)
 
-# ── Stage 2: Runtime Image ────────────────────────────────
 FROM ubuntu:22.04 AS runner
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install runtime shared libraries only
 RUN apt-get update && apt-get install -y \
     libjsoncpp25 \
     uuid-runtime \

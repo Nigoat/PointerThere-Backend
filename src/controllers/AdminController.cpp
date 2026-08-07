@@ -38,7 +38,12 @@ void AdminController::login(const HttpRequestPtr &req,
     Json::Value j;
     j["ok"] = true;
     auto resp = pt::okResponse(j);
-    resp->addCookie("admin_session", secret, 60 * 60 * 8, "/", "", false, true);
+
+    drogon::Cookie cookie("admin_session", secret);
+    cookie.setPath("/");
+    cookie.setHttpOnly(true);
+    cookie.setMaxAge(60 * 60 * 8);
+    resp->addCookie(cookie);
     cb(resp);
 }
 
@@ -54,13 +59,13 @@ void AdminController::getStats(const HttpRequestPtr &req,
         "(SELECT COUNT(*) FROM records WHERE status = 'pending' AND submitted_at > NOW() - INTERVAL '24 hours') AS new_since_yesterday",
         [cb](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k500InternalServerError, "Stats unavailable.")); return; }
+            auto row = res[0];
             Json::Value j;
-            auto &row = res[0];
             Json::Value s;
-            s["pending_count"]       = row["pending_count"].as<long long>();
-            s["users_count"]         = row["users_count"].as<long long>();
-            s["appeals_count"]       = row["appeals_count"].as<long long>();
-            s["new_since_yesterday"] = row["new_since_yesterday"].as<long long>();
+            s["pending_count"]       = static_cast<Json::Int64>(row["pending_count"].as<long long>());
+            s["users_count"]         = static_cast<Json::Int64>(row["users_count"].as<long long>());
+            s["appeals_count"]       = static_cast<Json::Int64>(row["appeals_count"].as<long long>());
+            s["new_since_yesterday"] = static_cast<Json::Int64>(row["new_since_yesterday"].as<long long>());
             j["stats"] = s;
             cb(pt::okResponse(j));
         },
@@ -91,11 +96,11 @@ void AdminController::getPending(const HttpRequestPtr &req,
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             Json::Value j;
             Json::Value arr(Json::arrayValue);
-            for (auto &row : res) {
+            for (const auto &row : res) {
                 Json::Value r;
-                r["id"]           = row["id"].as<long long>();
+                r["id"]           = static_cast<Json::Int64>(row["id"].as<long long>());
                 r["level_name"]   = row["level_name"].as<std::string>();
-                r["level_id"]     = row["level_id"].as<long long>();
+                r["level_id"]     = static_cast<Json::Int64>(row["level_id"].as<long long>());
                 r["player_name"]  = row["player_name"].as<std::string>();
                 r["progress"]     = row["progress"].as<int>();
                 r["video_url"]    = row["video_url"].as<std::string>();
@@ -105,7 +110,7 @@ void AdminController::getPending(const HttpRequestPtr &req,
                 arr.append(r);
             }
             j["records"] = arr;
-            j["total"]   = (long long)res.size();
+            j["total"]   = static_cast<Json::Int64>((long long)res.size());
             cb(pt::okResponse(j));
         },
         [cb](const orm::DrogonDbException &e) mutable {
@@ -161,28 +166,30 @@ void AdminController::getUsers(const HttpRequestPtr &req,
         "(SELECT COUNT(*) FROM records r WHERE r.player_name = u.username AND r.status = 'accepted') AS records_count "
         "FROM users u ";
 
+    auto mapUser = [](const orm::Row &row) {
+        Json::Value u;
+        u["id"]                  = static_cast<Json::Int64>(row["id"].as<long long>());
+        u["username"]            = row["username"].as<std::string>();
+        u["email"]               = row["email"].as<std::string>();
+        u["country"]             = row["country"].as<std::string>();
+        u["continent"]           = row["continent"].as<std::string>();
+        u["points"]              = row["points"].as<double>();
+        u["is_banned"]           = row["is_banned"].as<bool>();
+        u["ban_expires_at"]      = row["ban_expires_at"].isNull() ? Json::nullValue : Json::Value(row["ban_expires_at"].as<std::string>());
+        u["timeout_until"]       = row["timeout_until"].isNull() ? Json::nullValue : Json::Value(row["timeout_until"].as<std::string>());
+        u["two_factor_enabled"]  = row["two_factor_enabled"].as<bool>();
+        u["discord_id"]          = row["discord_id"].isNull() ? Json::nullValue : Json::Value(row["discord_id"].as<std::string>());
+        u["created_at"]          = row["created_at"].as<std::string>();
+        u["records_count"]       = static_cast<Json::Int64>(row["records_count"].as<long long>());
+        return u;
+    };
+
     if (!q.empty()) {
         sql += "WHERE u.username ILIKE $1 OR u.email ILIKE $1 ORDER BY u.id DESC LIMIT 100";
         db->execSqlAsync(sql,
-            [cb](const orm::Result &res) mutable {
+            [cb, mapUser](const orm::Result &res) mutable {
                 Json::Value j; Json::Value arr(Json::arrayValue);
-                for (auto &row : res) {
-                    Json::Value u;
-                    u["id"]                  = row["id"].as<long long>();
-                    u["username"]            = row["username"].as<std::string>();
-                    u["email"]               = row["email"].as<std::string>();
-                    u["country"]             = row["country"].as<std::string>();
-                    u["continent"]           = row["continent"].as<std::string>();
-                    u["points"]              = row["points"].as<double>();
-                    u["is_banned"]           = row["is_banned"].as<bool>();
-                    u["ban_expires_at"]      = row["ban_expires_at"].isNull() ? Json::nullValue : Json::Value(row["ban_expires_at"].as<std::string>());
-                    u["timeout_until"]       = row["timeout_until"].isNull() ? Json::nullValue : Json::Value(row["timeout_until"].as<std::string>());
-                    u["two_factor_enabled"]  = row["two_factor_enabled"].as<bool>();
-                    u["discord_id"]          = row["discord_id"].isNull() ? Json::nullValue : Json::Value(row["discord_id"].as<std::string>());
-                    u["created_at"]          = row["created_at"].as<std::string>();
-                    u["records_count"]       = row["records_count"].as<long long>();
-                    arr.append(u);
-                }
+                for (const auto &row : res) arr.append(mapUser(row));
                 j["users"] = arr; cb(pt::okResponse(j));
             },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
@@ -190,25 +197,9 @@ void AdminController::getUsers(const HttpRequestPtr &req,
     } else {
         sql += "ORDER BY u.points DESC LIMIT 500";
         db->execSqlAsync(sql,
-            [cb](const orm::Result &res) mutable {
+            [cb, mapUser](const orm::Result &res) mutable {
                 Json::Value j; Json::Value arr(Json::arrayValue);
-                for (auto &row : res) {
-                    Json::Value u;
-                    u["id"]             = row["id"].as<long long>();
-                    u["username"]       = row["username"].as<std::string>();
-                    u["email"]          = row["email"].as<std::string>();
-                    u["country"]        = row["country"].as<std::string>();
-                    u["continent"]      = row["continent"].as<std::string>();
-                    u["points"]         = row["points"].as<double>();
-                    u["is_banned"]      = row["is_banned"].as<bool>();
-                    u["ban_expires_at"] = row["ban_expires_at"].isNull() ? Json::nullValue : Json::Value(row["ban_expires_at"].as<std::string>());
-                    u["timeout_until"]  = row["timeout_until"].isNull() ? Json::nullValue : Json::Value(row["timeout_until"].as<std::string>());
-                    u["two_factor_enabled"] = row["two_factor_enabled"].as<bool>();
-                    u["discord_id"]     = row["discord_id"].isNull() ? Json::nullValue : Json::Value(row["discord_id"].as<std::string>());
-                    u["created_at"]     = row["created_at"].as<std::string>();
-                    u["records_count"]  = row["records_count"].as<long long>();
-                    arr.append(u);
-                }
+                for (const auto &row : res) arr.append(mapUser(row));
                 j["users"] = arr; cb(pt::okResponse(j));
             },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); });
@@ -239,15 +230,15 @@ void AdminController::updateUser(const HttpRequestPtr &req,
     auto db = drogon::app().getDbClient();
     std::string sql = "UPDATE users SET " + sets + " WHERE id = $" + std::to_string(idx) + " RETURNING id";
     if (params.size() == 1) {
-        db->execSqlAsync(sql, [cb](const orm::Result &r) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
+        db->execSqlAsync(sql, [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
             params[0], id);
     } else if (params.size() == 2) {
-        db->execSqlAsync(sql, [cb](const orm::Result &r) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
+        db->execSqlAsync(sql, [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
             params[0], params[1], id);
     } else {
-        db->execSqlAsync(sql, [cb](const orm::Result &r) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
+        db->execSqlAsync(sql, [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
             [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
             params[0], params[1], params[2], id);
     }
@@ -300,9 +291,9 @@ void AdminController::getLevels(const HttpRequestPtr &req,
         "FROM demon_levels ORDER BY rank ASC",
         [cb](const orm::Result &res) mutable {
             Json::Value j; Json::Value arr(Json::arrayValue);
-            for (auto &row : res) {
+            for (const auto &row : res) {
                 Json::Value l;
-                l["id"]             = row["id"].as<long long>();
+                l["id"]             = static_cast<Json::Int64>(row["id"].as<long long>());
                 l["rank"]           = row["rank"].as<int>();
                 l["name"]           = row["name"].as<std::string>();
                 l["points"]         = row["points"].as<double>();
@@ -344,7 +335,9 @@ void AdminController::addLevel(const HttpRequestPtr &req,
                     db3->execSqlAsync("INSERT INTO list_movements (level_id, old_rank, new_rank) VALUES ($1, NULL, $2)",
                         [](const orm::Result &) {}, [](const orm::DrogonDbException &) {}, levelId, rank);
                     Json::Value j; Json::Value lvl;
-                    lvl["id"] = levelId; lvl["rank"] = rank; lvl["name"] = name;
+                    lvl["id"]   = static_cast<Json::Int64>(levelId);
+                    lvl["rank"] = rank;
+                    lvl["name"] = name;
                     j["level"] = lvl; cb(pt::okResponse(j));
                 },
                 [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
@@ -414,10 +407,10 @@ void AdminController::getAppeals(const HttpRequestPtr &req,
         " ORDER BY a.created_at ASC",
         [cb](const orm::Result &res) mutable {
             Json::Value j; Json::Value arr(Json::arrayValue);
-            for (auto &row : res) {
+            for (const auto &row : res) {
                 Json::Value a;
-                a["id"]         = row["id"].as<long long>();
-                a["user_id"]    = row["user_id"].as<long long>();
+                a["id"]         = static_cast<Json::Int64>(row["id"].as<long long>());
+                a["user_id"]    = static_cast<Json::Int64>(row["user_id"].as<long long>());
                 a["username"]   = row["username"].as<std::string>();
                 a["email"]      = row["email"].as<std::string>();
                 a["reason"]     = row["reason"].as<std::string>();
@@ -462,7 +455,7 @@ void AdminController::getSettings(const HttpRequestPtr &req,
         "db_cost, deploy_cost, bot_cost, featured_level_id FROM site_settings WHERE id = 1",
         [cb](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "Settings not found.")); return; }
-            auto &row = res[0];
+            auto row = res[0];
             Json::Value j; Json::Value s;
             s["discord_url"]       = row["discord_url"].as<std::string>();
             s["twitter_url"]       = row["twitter_url"].as<std::string>();
@@ -473,7 +466,9 @@ void AdminController::getSettings(const HttpRequestPtr &req,
             s["db_cost"]           = row["db_cost"].as<double>();
             s["deploy_cost"]       = row["deploy_cost"].as<double>();
             s["bot_cost"]          = row["bot_cost"].as<double>();
-            s["featured_level_id"] = row["featured_level_id"].isNull() ? Json::nullValue : Json::Value(row["featured_level_id"].as<long long>());
+            s["featured_level_id"] = row["featured_level_id"].isNull()
+                ? Json::nullValue
+                : Json::Value(static_cast<Json::Int64>(row["featured_level_id"].as<long long>()));
             j["settings"] = s; cb(pt::okResponse(j));
         },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); });
