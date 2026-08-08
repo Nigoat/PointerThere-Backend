@@ -50,6 +50,18 @@ static orm::DbClientPtr getDatabaseClient() {
     return db;
 }
 
+static std::string generateNumericCode(size_t length = 6) {
+    static const char digits[] = "0123456789";
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 9);
+    std::string code;
+    code.reserve(length);
+    for (size_t i = 0; i < length; ++i)
+        code += digits[dis(gen)];
+    return code;
+}
+
 void AuthController::doRegister(const HttpRequestPtr &req,
                                 std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body     = req->getJsonObject();
@@ -83,7 +95,6 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                     return;
                 }
 
-                // Run BCrypt hashing on a worker thread to keep Drogon loop responsive
                 std::thread([=, cb = std::move(cb)]() mutable {
                     std::string hash;
                     try {
@@ -95,6 +106,9 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                         return;
                     }
 
+                    std::string verifyCode = generateNumericCode(6);
+                    std::cout << "[PointerThere Auth] Generated verification code for " << email << ": " << verifyCode << "\n";
+
                     drogon::app().getLoop()->runInLoop([=, cb = std::move(cb)]() mutable {
                         auto db2 = getDatabaseClient();
                         if (!db2) {
@@ -103,8 +117,8 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                         }
 
                         db2->execSqlAsync(
-                            "INSERT INTO users (username, email, password_hash) "
-                            "VALUES ($1, $2, $3) RETURNING id, username, email, avatar_url, two_factor_enabled",
+                            "INSERT INTO users (username, email, password_hash, email_verify_token) "
+                            "VALUES ($1, $2, $3, $4) RETURNING id, username, email, avatar_url, two_factor_enabled",
                             [=, cb = std::move(cb)](const orm::Result &res2) mutable {
                                 if (res2.empty()) {
                                     cb(pt::errorResponse(k500InternalServerError, "Failed to create account."));
@@ -119,7 +133,7 @@ void AuthController::doRegister(const HttpRequestPtr &req,
                             [cb](const drogon::orm::DrogonDbException &e) mutable {
                                 cb(pt::errorResponse(k500InternalServerError, e.base().what()));
                             },
-                            username, email, hash);
+                            username, email, hash, verifyCode);
                     });
                 }).detach();
             },
@@ -281,21 +295,46 @@ void AuthController::doLogout(const HttpRequestPtr &,
 void AuthController::verifyEmail(const HttpRequestPtr &req,
                                  std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body  = req->getJsonObject();
+    if (!body) { cb(pt::errorResponse(k400BadRequest, "Invalid JSON.")); return; }
+
     auto token = (*body)["token"].asString();
-    auto db    = getDatabaseClient();
+    auto email = (*body)["email"].asString();
+
+    if (token.empty()) {
+        cb(pt::errorResponse(k400BadRequest, "Verification token is required."));
+        return;
+    }
+
+    auto db = getDatabaseClient();
     if (!db) { cb(pt::errorResponse(k500InternalServerError, "Database connection not initialized.")); return; }
-    db->execSqlAsync(
-        "UPDATE users SET email_verified = TRUE, email_verify_token = NULL "
-        "WHERE email_verify_token = $1 RETURNING id",
-        [cb](const orm::Result &res) mutable {
-            if (res.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid or expired token.")); return; }
-            Json::Value j; j["ok"] = true;
-            cb(pt::okResponse(j));
-        },
-        [cb](const drogon::orm::DrogonDbException &e) mutable {
-            cb(pt::errorResponse(k500InternalServerError, e.base().what()));
-        },
-        token);
+
+    if (email.empty()) {
+        db->execSqlAsync(
+            "UPDATE users SET email_verified = TRUE, email_verify_token = NULL "
+            "WHERE email_verify_token = $1 RETURNING id",
+            [cb](const orm::Result &res) mutable {
+                if (res.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid or expired verification code.")); return; }
+                Json::Value j; j["ok"] = true;
+                cb(pt::okResponse(j));
+            },
+            [cb](const drogon::orm::DrogonDbException &e) mutable {
+                cb(pt::errorResponse(k500InternalServerError, e.base().what()));
+            },
+            token);
+    } else {
+        db->execSqlAsync(
+            "UPDATE users SET email_verified = TRUE, email_verify_token = NULL "
+            "WHERE (email_verify_token = $1 OR email = $2) AND (email_verify_token = $1 OR email_verify_token IS NULL) RETURNING id",
+            [cb](const orm::Result &res) mutable {
+                if (res.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid or expired verification code.")); return; }
+                Json::Value j; j["ok"] = true;
+                cb(pt::okResponse(j));
+            },
+            [cb](const drogon::orm::DrogonDbException &e) mutable {
+                cb(pt::errorResponse(k500InternalServerError, e.base().what()));
+            },
+            token, email);
+    }
 }
 
 void AuthController::forgotPassword(const HttpRequestPtr &req,
