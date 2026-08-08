@@ -489,9 +489,16 @@ void UserController::setup2FA(const HttpRequestPtr &req,
 
     const auto code = generateTwoFactorCode();
     const auto codeHash = sha256Hex(code);
+    const auto userId = std::stoll(payload->user_id);
 
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync("UPDATE users SET two_factor_secret = $1, two_factor_code_expires = NOW() + INTERVAL '10 minutes' WHERE id = $2 RETURNING email",
+    // Both values are server-generated (a SHA-256 hex digest and parsed integer),
+    // so embedding them avoids a libpq prepared-statement framing bug seen with
+    // this Railway/Drogon build ("insufficient data left in message").
+    const auto sql = "UPDATE users SET two_factor_secret = '" + codeHash +
+        "', two_factor_code_expires = NOW() + INTERVAL '10 minutes' WHERE id = " +
+        std::to_string(userId) + " RETURNING email";
+    db->execSqlAsync(sql,
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "User not found.")); return; }
             const auto email = res[0]["email"].as<std::string>();
@@ -505,8 +512,7 @@ void UserController::setup2FA(const HttpRequestPtr &req,
                 });
             }).detach();
         },
-        [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-        codeHash, std::stoll(payload->user_id));
+        [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); });
 }
 
 void UserController::verify2FA(const HttpRequestPtr &req,
@@ -519,15 +525,18 @@ void UserController::verify2FA(const HttpRequestPtr &req,
     auto body = req->getJsonObject();
     const auto code = body ? (*body)["code"].asString() : "";
     if (code.size() != 6) { cb(pt::errorResponse(k400BadRequest, "Enter the 6-digit code sent to your email.")); return; }
+    const auto userId = std::stoll(payload->user_id);
+    const auto codeHash = sha256Hex(code);
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync("UPDATE users SET two_factor_enabled = TRUE, two_factor_secret = NULL, two_factor_code_expires = NULL "
-                     "WHERE id = $1 AND two_factor_secret = $2 AND two_factor_code_expires > NOW() RETURNING id",
+    const auto sql = "UPDATE users SET two_factor_enabled = TRUE, two_factor_secret = NULL, two_factor_code_expires = NULL "
+                     "WHERE id = " + std::to_string(userId) + " AND two_factor_secret = '" + codeHash +
+                     "' AND two_factor_code_expires > NOW() RETURNING id";
+    db->execSqlAsync(sql,
         [cb](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid or expired verification code.")); return; }
             Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
         },
-        [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-        std::stoll(payload->user_id), sha256Hex(code));
+        [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); });
 }
 
 void UserController::disable2FA(const HttpRequestPtr &req,
