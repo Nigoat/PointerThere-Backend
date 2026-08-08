@@ -628,9 +628,16 @@ void UserController::verifyDiscord(const HttpRequestPtr &req,
         [discordId, cb = std::move(cb)](bool valid) mutable {
             if (!valid) { cb(pt::errorResponse(k400BadRequest, "CAPTCHA verification failed.")); return; }
             std::thread([discordId, cb = std::move(cb)]() mutable {
-                const bool granted = pt::grantDiscordRole(discordId);
-                drogon::app().getLoop()->runInLoop([granted, cb = std::move(cb)]() mutable {
-                    if (!granted) { cb(pt::errorResponse(k500InternalServerError, "Unable to assign the Discord role. Please try again later.")); return; }
+                long discordStatus = 0;
+                const bool granted = pt::grantDiscordRole(discordId, discordStatus);
+                drogon::app().getLoop()->runInLoop([granted, discordStatus, cb = std::move(cb)]() mutable {
+                    if (!granted) {
+                        const auto details = discordStatus == 403 ? " The bot needs the Manage Roles permission and its role must be above the Verified role." :
+                                             discordStatus == 401 ? " The Discord bot token is invalid." :
+                                             discordStatus == 404 ? " Check the Discord server and Verified role IDs." :
+                                             " Please try again later.";
+                        cb(pt::errorResponse(k500InternalServerError, "Unable to assign the Discord role." + details)); return;
+                    }
                     Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
                 });
             }).detach();
