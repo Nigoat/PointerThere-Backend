@@ -6,46 +6,44 @@
 #pragma once
 
 #include <drogon/drogon.h>
+#include <drogon/HttpClient.h>
 #include <string>
 #include <functional>
-#include <curl/curl.h>
 
 namespace pt {
 
 inline void verifyTurnstile(const std::string &token,
                              const std::string &secret,
                              std::function<void(bool)> callback) {
-    drogon::app().getLoop()->runInLoop([token, secret, cb = std::move(callback)] {
-        CURL *curl = curl_easy_init();
-        if (!curl) { cb(false); return; }
+    if (token.empty() || secret.empty()) {
+        callback(false);
+        return;
+    }
 
-        std::string postData = "secret=" + secret + "&response=" + token;
-        std::string responseBody;
+    auto client = drogon::HttpClient::newHttpClient("https://challenges.cloudflare.com");
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Post);
+    req->setPath("/turnstile/v0/siteverify");
+    req->setContentTypeCode(drogon::CT_APPLICATION_X_FORM);
+    req->setBody("secret=" + secret + "&response=" + token);
 
-        curl_easy_setopt(curl, CURLOPT_URL, "https://challenges.cloudflare.com/turnstile/v0/siteverify");
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postData.c_str());
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, +[](char *ptr, size_t, size_t nmemb, void *userdata) -> size_t {
-            static_cast<std::string *>(userdata)->append(ptr, nmemb);
-            return nmemb;
-        });
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    client->sendRequest(
+        req,
+        [cb = std::move(callback)](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+            if (result != drogon::ReqResult::Ok || !resp) {
+                cb(false);
+                return;
+            }
 
-        CURLcode res = curl_easy_perform(curl);
-        curl_easy_cleanup(curl);
-
-        if (res != CURLE_OK) { cb(false); return; }
-
-        Json::CharReaderBuilder builder;
-        Json::Value root;
-        std::istringstream ss(responseBody);
-        std::string errs;
-        if (Json::parseFromStream(builder, ss, &root, &errs)) {
-            cb(root["success"].asBool());
-        } else {
-            cb(false);
-        }
-    });
+            auto json = resp->getJsonObject();
+            if (json && (*json)["success"].isBool()) {
+                cb((*json)["success"].asBool());
+            } else {
+                cb(false);
+            }
+        },
+        5.0
+    );
 }
 
 }
