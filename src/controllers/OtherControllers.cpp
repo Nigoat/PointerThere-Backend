@@ -28,15 +28,6 @@ static std::string generateTwoFactorCode() {
     return code;
 }
 
-static std::string sha256Hex(const std::string &value) {
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    SHA256(reinterpret_cast<const unsigned char *>(value.data()), value.size(), digest);
-    std::ostringstream stream;
-    stream << std::hex << std::setfill('0');
-    for (unsigned char byte : digest) stream << std::setw(2) << static_cast<int>(byte);
-    return stream.str();
-}
-
 void RecordsController::submitRecord(const HttpRequestPtr &req,
                                       std::function<void(const HttpResponsePtr &)> &&cb) {
     auto body = req->getJsonObject();
