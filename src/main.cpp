@@ -90,20 +90,13 @@ int main() {
 
     pt::JwtHelper::instance().setSecret(pt::env("JWT_SECRET", "changeme"));
 
-    auto host  = pt::env("HOST", "0.0.0.0");
-    auto port  = std::stoi(pt::env("PORT", "8080"));
+    auto port = std::stoi(pt::env("PORT", "8080"));
     auto dbUrl = pt::env("DATABASE_URL");
 
-    std::cout << "[PointerThere] Starting backend service on 0.0.0.0:8080 and " << host << ":" << port << "\n";
+    std::cout << "[PointerThere] Starting backend service on 0.0.0.0:" << port << "\n";
 
     auto &app = drogon::app();
-
-    // Listen on 8080 AND dynamic PORT to guarantee Railway proxy match
-    app.addListener("0.0.0.0", 8080);
-    if (port != 8080) {
-        app.addListener("0.0.0.0", port);
-    }
-
+    app.addListener("0.0.0.0", port);
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
@@ -157,7 +150,7 @@ int main() {
         return resp;
     }());
 
-    std::cout << "[PointerThere] Backend ready and listening on 0.0.0.0:8080\n";
+    std::cout << "[PointerThere] Backend ready and listening on 0.0.0.0:" << port << "\n";
     app.run();
     return 0;
 }
