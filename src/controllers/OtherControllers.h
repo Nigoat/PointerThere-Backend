@@ -54,6 +54,7 @@ public:
     ADD_METHOD_TO(UserController::setup2FA,        "/api/user/2fa/setup",         drogon::Post);
     ADD_METHOD_TO(UserController::verify2FA,       "/api/user/2fa/verify",        drogon::Post);
     ADD_METHOD_TO(UserController::disable2FA,      "/api/user/2fa",               drogon::Delete);
+    ADD_METHOD_TO(UserController::verifyDiscord,   "/api/discord/verify",         drogon::Post);
     METHOD_LIST_END
 
     void getMe          (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
@@ -64,6 +65,7 @@ public:
     void setup2FA       (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void verify2FA      (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void disable2FA     (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
+    void verifyDiscord  (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 };
 
 class SettingsController : public drogon::HttpController<SettingsController> {

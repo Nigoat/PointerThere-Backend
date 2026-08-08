@@ -6,6 +6,7 @@
 #include "OtherControllers.h"
 #include "../utils/env.h"
 #include "../utils/jwt_helper.h"
+#include "../utils/discord_role.h"
 #include "../utils/resend.h"
 #include "../utils/turnstile.h"
 #include <drogon/drogon.h>
@@ -15,6 +16,7 @@
 #include <iomanip>
 #include <sstream>
 #include <string_view>
+#include <chrono>
 #include <openssl/sha.h>
 
 using namespace pt::controllers;
@@ -588,6 +590,51 @@ void UserController::disable2FA(const HttpRequestPtr &req,
         [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         std::stoll(payload->user_id));
+}
+
+void UserController::verifyDiscord(const HttpRequestPtr &req,
+                                   std::function<void(const HttpResponsePtr &)> &&cb) {
+    auto body = req->getJsonObject();
+    if (!body) { cb(pt::errorResponse(k400BadRequest, "Invalid JSON.")); return; }
+    const auto token = (*body)["token"].asString();
+    const auto turnstileToken = (*body)["turnstile_token"].asString();
+    const auto dot = token.rfind('.');
+    const auto secret = pt::env("BOT_VERIFICATION_SECRET");
+    if (dot == std::string::npos || secret.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid verification link.")); return; }
+
+    const auto signedPayload = token.substr(0, dot);
+    const auto signature = token.substr(dot + 1);
+    const auto expected = pt::JwtHelper::base64UrlEncode(pt::JwtHelper::hmacSha256(signedPayload, secret));
+    if (signature != expected) { cb(pt::errorResponse(k400BadRequest, "Invalid verification link.")); return; }
+
+    const auto payload = pt::JwtHelper::base64UrlDecode(signedPayload);
+    const auto payloadDot = payload.rfind('.');
+    if (payloadDot == std::string::npos) { cb(pt::errorResponse(k400BadRequest, "Invalid verification link.")); return; }
+    const auto discordId = payload.substr(0, payloadDot);
+    const auto expiresAt = payload.substr(payloadDot + 1);
+    if (discordId.empty() || discordId.find_first_not_of("0123456789") != std::string::npos ||
+        expiresAt.empty() || expiresAt.find_first_not_of("0123456789") != std::string::npos) {
+        cb(pt::errorResponse(k400BadRequest, "This verification link has expired. Please try again from Discord.")); return;
+    }
+    long long expiresAtUnix = 0;
+    try { expiresAtUnix = std::stoll(expiresAt); } catch (...) {
+        cb(pt::errorResponse(k400BadRequest, "Invalid verification link.")); return;
+    }
+    if (expiresAtUnix < std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count()) {
+        cb(pt::errorResponse(k400BadRequest, "This verification link has expired. Please try again from Discord.")); return;
+    }
+
+    pt::verifyTurnstile(turnstileToken, pt::env("TURNSTILE_SECRET_KEY"),
+        [discordId, cb = std::move(cb)](bool valid) mutable {
+            if (!valid) { cb(pt::errorResponse(k400BadRequest, "CAPTCHA verification failed.")); return; }
+            std::thread([discordId, cb = std::move(cb)]() mutable {
+                const bool granted = pt::grantDiscordRole(discordId);
+                drogon::app().getLoop()->runInLoop([granted, cb = std::move(cb)]() mutable {
+                    if (!granted) { cb(pt::errorResponse(k500InternalServerError, "Unable to assign the Discord role. Please try again later.")); return; }
+                    Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
+                });
+            }).detach();
+        });
 }
 
 void SettingsController::getSiteSettings(const HttpRequestPtr &,
