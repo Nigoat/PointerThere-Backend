@@ -8,7 +8,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
-#include <regex>
 #include "utils/env.h"
 #include "utils/jwt_helper.h"
 #include "utils/middleware.h"
@@ -31,22 +30,6 @@ static void loadEnvFile(const std::string &path) {
     }
 }
 
-static void parseDbUrl(const std::string &url, std::string &host, unsigned short &port, 
-                       std::string &user, std::string &password, std::string &database) {
-    std::regex pattern(R"(postgresql://([^:]+):([^@]+)@([^:/]+):(\d+)/(.+))");
-    std::smatch match;
-    
-    if (std::regex_match(url, match, pattern)) {
-        user = match[1];
-        password = match[2];
-        host = match[3];
-        port = static_cast<unsigned short>(std::stoi(match[4]));
-        database = match[5];
-    } else {
-        throw std::runtime_error("Invalid DATABASE_URL format. Expected: postgresql://user:password@host:port/database");
-    }
-}
-
 int main() {
     loadEnvFile(".env");
 
@@ -57,11 +40,11 @@ int main() {
     auto dbUrl = pt::env("DATABASE_URL");
 
     if (dbUrl.empty()) {
-        std::cerr << "[PointerThere] ERROR: DATABASE_URL is not set!\n";
+        std::cerr << "[PointerThere] FATAL: DATABASE_URL environment variable is missing!\n";
         return 1;
     }
 
-    std::cout << "[PointerThere] Backend starting on " << host << ":" << port << "\n";
+    std::cout << "[PointerThere] Starting backend service on " << host << ":" << port << "\n";
 
     auto &app = drogon::app();
 
@@ -69,25 +52,16 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    // Parse DATABASE_URL and configure PostgreSQL connection
-    std::string dbHost, dbUser, dbPassword, dbName;
-    unsigned short dbPort;
     try {
-        parseDbUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName);
+        drogon::orm::PostgresConfig pgConfig;
+        pgConfig.connectInfo = dbUrl;
+        pgConfig.connectionNumber = 10;
+        pgConfig.name = "default";
+        app.addDbClient(pgConfig);
+        std::cout << "[PointerThere] PostgreSQL client initialized successfully.\n";
     } catch (const std::exception &e) {
-        std::cerr << "[PointerThere] ERROR: " << e.what() << "\n";
-        return 1;
+        std::cerr << "[PointerThere] ERROR initializing PostgreSQL client: " << e.what() << "\n";
     }
-
-    drogon::orm::PostgresConfig pgConfig;
-    pgConfig.host = dbHost;
-    pgConfig.port = dbPort;
-    pgConfig.username = dbUser;
-    pgConfig.password = dbPassword;
-    pgConfig.databaseName = dbName;
-    pgConfig.connectionNumber = 10;
-    pgConfig.name = "default";
-    app.addDbClient(pgConfig);
 
     app.registerPostHandlingAdvice([](const drogon::HttpRequestPtr &, const drogon::HttpResponsePtr &resp) {
         pt::addCorsHeaders(resp);
@@ -102,6 +76,7 @@ int main() {
         return resp;
     }());
 
+    std::cout << "[PointerThere] Backend ready and listening on port " << port << "\n";
     app.run();
     return 0;
 }
