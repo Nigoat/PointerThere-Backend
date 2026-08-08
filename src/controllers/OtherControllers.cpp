@@ -14,6 +14,7 @@
 #include <thread>
 #include <iomanip>
 #include <sstream>
+#include <string_view>
 #include <openssl/sha.h>
 
 using namespace pt::controllers;
@@ -449,6 +450,42 @@ void UserController::deleteMe(const HttpRequestPtr &req,
         [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         std::stoll(payload->user_id));
+}
+
+void UserController::uploadAvatar(const HttpRequestPtr &req,
+                                  std::function<void(const HttpResponsePtr &)> &&cb) {
+    auto tokenOpt = pt::JwtHelper::extractBearer(req);
+    if (!tokenOpt) { cb(pt::errorResponse(k401Unauthorized, "Authentication required.")); return; }
+    auto payload = pt::JwtHelper::instance().verify(*tokenOpt);
+    if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
+
+    auto body = req->getJsonObject();
+    const auto dataUrl = body ? (*body)["image"].asString() : "";
+    constexpr std::string_view pngPrefix = "data:image/png;base64,";
+    constexpr std::string_view jpgPrefix = "data:image/jpeg;base64,";
+    const auto prefix = dataUrl.rfind(pngPrefix, 0) == 0 ? pngPrefix :
+                        dataUrl.rfind(jpgPrefix, 0) == 0 ? jpgPrefix : std::string_view{};
+    if (prefix.empty()) { cb(pt::errorResponse(k400BadRequest, "Profile pictures must be PNG or JPG files.")); return; }
+
+    const auto encoded = std::string_view(dataUrl).substr(prefix.size());
+    if (encoded.empty() || encoded.size() % 4 != 0 ||
+        encoded.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=") != std::string_view::npos) {
+        cb(pt::errorResponse(k400BadRequest, "Invalid image data.")); return;
+    }
+    const size_t padding = encoded.ends_with("==") ? 2 : encoded.ends_with("=") ? 1 : 0;
+    const size_t decodedSize = (encoded.size() / 4) * 3 - padding;
+    if (decodedSize > 5 * 1024 * 1024) { cb(pt::errorResponse(k400BadRequest, "Profile pictures must be 5 MB or smaller.")); return; }
+
+    // dataUrl contains only a fixed prefix plus validated Base64 characters.
+    const auto sql = "UPDATE users SET avatar_url = '" + dataUrl + "' WHERE id = " +
+                     std::to_string(std::stoll(payload->user_id)) + " RETURNING avatar_url";
+    auto db = drogon::app().getDbClient();
+    db->execSqlAsync(sql,
+        [cb](const orm::Result &res) mutable {
+            if (res.empty()) { cb(pt::errorResponse(k404NotFound, "User not found.")); return; }
+            Json::Value j; j["avatar_url"] = res[0]["avatar_url"].as<std::string>(); cb(pt::okResponse(j));
+        },
+        [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); });
 }
 
 void UserController::changePassword(const HttpRequestPtr &req,

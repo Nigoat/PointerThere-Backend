@@ -49,6 +49,7 @@ public:
     ADD_METHOD_TO(UserController::getMe,           "/api/user/me",                drogon::Get);
     ADD_METHOD_TO(UserController::updateMe,        "/api/user/me",                drogon::Patch);
     ADD_METHOD_TO(UserController::deleteMe,        "/api/user/me",                drogon::Delete);
+    ADD_METHOD_TO(UserController::uploadAvatar,    "/api/user/avatar",           drogon::Post);
     ADD_METHOD_TO(UserController::changePassword,  "/api/user/change-password",   drogon::Post);
     ADD_METHOD_TO(UserController::setup2FA,        "/api/user/2fa/setup",         drogon::Post);
     ADD_METHOD_TO(UserController::verify2FA,       "/api/user/2fa/verify",        drogon::Post);
@@ -58,6 +59,7 @@ public:
     void getMe          (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void updateMe       (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void deleteMe       (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
+    void uploadAvatar   (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void changePassword (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void setup2FA       (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void verify2FA      (const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);

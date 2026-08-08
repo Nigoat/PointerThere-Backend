@@ -90,6 +90,7 @@ int main() {
 
     auto &app = drogon::app();
     app.addListener("0.0.0.0", port);
+    app.setClientMaxBodySize(7 * 1024 * 1024);
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
