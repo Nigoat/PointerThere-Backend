@@ -8,7 +8,6 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
-#include <regex>
 #include "utils/env.h"
 #include "utils/jwt_helper.h"
 #include "utils/middleware.h"
@@ -31,40 +30,6 @@ static void loadEnvFile(const std::string &path) {
     }
 }
 
-// Parse PostgreSQL connection URL: postgresql://user:password@host:port/database
-static void parseDbUrl(const std::string &url, std::string &host, unsigned short &port, 
-                       std::string &user, std::string &password, std::string &database) {
-    // Pattern: postgresql://user:password@host:port/database (handling query params like ?sslmode=...)
-    std::regex pattern(R"(postgresql://([^:]+):([^@]+)@([^:/]+):(\d+)/([^?]+)(?:\?.*)?)");
-    std::smatch match;
-    
-    if (std::regex_match(url, match, pattern)) {
-        user = match[1];
-        password = match[2];
-        host = match[3];
-        port = static_cast<unsigned short>(std::stoi(match[4]));
-        database = match[5];
-    } else {
-        // Fallback simple search if regex fails
-        auto userEnd = url.find(":", 13);
-        auto passEnd = url.find("@", userEnd);
-        auto hostEnd = url.find(":", passEnd);
-        auto portEnd = url.find("/", hostEnd);
-        if (userEnd != std::string::npos && passEnd != std::string::npos && 
-            hostEnd != std::string::npos && portEnd != std::string::npos) {
-            user = url.substr(13, userEnd - 13);
-            password = url.substr(userEnd + 1, passEnd - userEnd - 1);
-            host = url.substr(passEnd + 1, hostEnd - passEnd - 1);
-            port = static_cast<unsigned short>(std::stoi(url.substr(hostEnd + 1, portEnd - hostEnd - 1)));
-            auto dbPart = url.substr(portEnd + 1);
-            auto qPos = dbPart.find("?");
-            database = (qPos != std::string::npos) ? dbPart.substr(0, qPos) : dbPart;
-        } else {
-            throw std::runtime_error("Invalid DATABASE_URL format. Expected: postgresql://user:password@host:port/database");
-        }
-    }
-}
-
 int main() {
     loadEnvFile(".env");
 
@@ -75,11 +40,11 @@ int main() {
     auto dbUrl = pt::env("DATABASE_URL");
 
     if (dbUrl.empty()) {
-        std::cerr << "[PointerThere] ERROR: DATABASE_URL is not set!\n";
+        std::cerr << "[PointerThere] ERROR: DATABASE_URL environment variable is missing!\n";
         return 1;
     }
 
-    std::cout << "[PointerThere] Backend starting on " << host << ":" << port << "\n";
+    std::cout << "[PointerThere] Starting backend service on " << host << ":" << port << "\n";
 
     auto &app = drogon::app();
 
@@ -87,26 +52,26 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    // Parse DATABASE_URL and configure PostgreSQL connection
-    std::string dbHost, dbUser, dbPassword, dbName;
-    unsigned short dbPort = 5432;
     try {
-        parseDbUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName);
-        std::cout << "[PointerThere] Database configuration parsed successfully for host: " << dbHost << "\n";
+        drogon::orm::PostgresConfig pgConfig;
+        pgConfig.connectInfo = dbUrl;
+        pgConfig.connectionNumber = 10;
+        pgConfig.name = "default";
+        app.addDbClient(pgConfig);
+        std::cout << "[PointerThere] PostgreSQL client initialized with DATABASE_URL.\n";
     } catch (const std::exception &e) {
-        std::cerr << "[PointerThere] ERROR: " << e.what() << "\n";
-        return 1;
+        std::cerr << "[PointerThere] WARNING: DB Client Init Error: " << e.what() << "\n";
     }
 
-    drogon::orm::PostgresConfig pgConfig;
-    pgConfig.host = dbHost;
-    pgConfig.port = dbPort;
-    pgConfig.username = dbUser;
-    pgConfig.password = dbPassword;
-    pgConfig.databaseName = dbName;
-    pgConfig.connectionNumber = 10;
-    pgConfig.name = "default";
-    app.addDbClient(pgConfig);
+    app.registerHandler("/", [](const drogon::HttpRequestPtr &,
+                                 std::function<void(const drogon::HttpResponsePtr &)> &&cb) {
+        Json::Value j;
+        j["status"] = "online";
+        j["service"] = "PointerThere Backend";
+        auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+        pt::addCorsHeaders(resp);
+        cb(resp);
+    }, {drogon::Get});
 
     app.registerPostHandlingAdvice([](const drogon::HttpRequestPtr &, const drogon::HttpResponsePtr &resp) {
         pt::addCorsHeaders(resp);
@@ -121,6 +86,7 @@ int main() {
         return resp;
     }());
 
+    std::cout << "[PointerThere] Backend ready and listening on " << host << ":" << port << "\n";
     app.run();
     return 0;
 }
