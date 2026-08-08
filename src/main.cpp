@@ -108,11 +108,19 @@ int main() {
             pgConfig.name = "default";
             app.addDbClient(pgConfig);
 
+            drogon::orm::PostgresConfig pgConfigFast = pgConfig;
+            pgConfigFast.isFast = true;
+            app.addDbClient(pgConfigFast);
+
             drogon::orm::PostgresConfig pgConfig2 = pgConfig;
             pgConfig2.name = "";
             app.addDbClient(pgConfig2);
 
-            std::cout << "[PointerThere] PostgreSQL database clients added successfully.\n";
+            drogon::orm::PostgresConfig pgConfig2Fast = pgConfig2;
+            pgConfig2Fast.isFast = true;
+            app.addDbClient(pgConfig2Fast);
+
+            std::cout << "[PointerThere] PostgreSQL database clients (standard & fast) added successfully.\n";
         } catch (const std::exception &e) {
             std::cerr << "[PointerThere] ERROR initializing DB client: " << e.what() << "\n";
         }

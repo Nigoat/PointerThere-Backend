@@ -45,6 +45,8 @@ static Json::Value buildUserResponse(const orm::Row &row, const std::string &jwt
 static orm::DbClientPtr getDatabaseClient() {
     auto db = drogon::app().getDbClient("default");
     if (!db) db = drogon::app().getDbClient();
+    if (!db) db = drogon::app().getFastDbClient("default");
+    if (!db) db = drogon::app().getFastDbClient();
     return db;
 }
 
