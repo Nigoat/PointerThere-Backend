@@ -7,11 +7,18 @@
 namespace pt {
 
 inline bool grantDiscordRole(const std::string &discordId, long &statusCode) {
-    const auto botToken = env("DISCORD_BOT_TOKEN");
-    const auto guildId = env("DISCORD_GUILD_ID");
-    const auto roleId = env("DISCORD_VERIFIED_ROLE_ID");
+    auto botToken = env("DISCORD_BOT_TOKEN");
+    auto guildId = env("DISCORD_GUILD_ID");
+    auto roleId = env("DISCORD_VERIFIED_ROLE_ID");
+    // Support the bot's existing Railway variable names too.
+    if (botToken.empty()) botToken = env("DISCORD_TOKEN");
+    if (guildId.empty()) guildId = env("GUILD_ID");
+    if (roleId.empty()) roleId = env("VERIFIED_ROLE_ID");
     statusCode = 0;
-    if (botToken.empty() || guildId.empty() || roleId.empty() || discordId.empty()) return false;
+    if (botToken.empty() || guildId.empty() || roleId.empty() || discordId.empty()) {
+        std::cerr << "[Discord Verification] Missing Discord bot token, guild ID, or Verified role ID.\n";
+        return false;
+    }
 
     CURL *curl = curl_easy_init();
     if (!curl) return false;

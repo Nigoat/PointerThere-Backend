@@ -36,9 +36,11 @@ inline void verifyTurnstile(const std::string &token,
     };
 
     // 5-second safety guard timeout
-    drogon::app().getLoop()->runAfter(5.0, [safeCallback]() mutable {
-        std::cerr << "[Turnstile] Verification timed out after 5s.\n";
-        safeCallback(false);
+    drogon::app().getLoop()->runAfter(5.0, [safeCallback, called]() mutable {
+        if (!called->load()) {
+            std::cerr << "[Turnstile] Verification timed out after 5s.\n";
+            safeCallback(false);
+        }
     });
 
     std::thread([token, secret, safeCallback]() mutable {
