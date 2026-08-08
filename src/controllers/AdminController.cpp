@@ -7,6 +7,7 @@
 #include "../utils/env.h"
 #include <drogon/drogon.h>
 #include <string_view>
+#include <sstream>
 
 using namespace pt::controllers;
 using namespace drogon;
@@ -38,6 +39,16 @@ static std::string youtubeThumbnailUrl(const std::string &videoUrl) {
 
     if (id.size() != 11 || id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != std::string_view::npos) return "";
     return "https://i.ytimg.com/vi/" + std::string(id) + "/hqdefault.jpg";
+}
+
+static Json::Value creatorsToJson(const std::string &raw) {
+    Json::Value creators(Json::arrayValue);
+    auto value = raw;
+    if (value.size() >= 2 && value.front() == '{' && value.back() == '}') value = value.substr(1, value.size() - 2);
+    std::stringstream stream(value);
+    std::string creator;
+    while (std::getline(stream, creator, ',')) if (!creator.empty()) creators.append(creator);
+    return creators;
 }
 
 void AdminController::login(const HttpRequestPtr &req,
@@ -320,7 +331,9 @@ void AdminController::getLevels(const HttpRequestPtr &req,
                 l["name"]           = row["name"].as<std::string>();
                 l["points"]         = row["points"].as<double>();
                 l["verified_by"]    = row["verified_by"].as<std::string>();
+                l["creators"]       = creatorsToJson(row["creators"].as<std::string>());
                 l["video_url"]      = row["video_url"].as<std::string>();
+                l["thumbnail_url"]  = row["thumbnail_url"].isNull() ? "" : row["thumbnail_url"].as<std::string>();
                 l["difficulty_tier"] = row["difficulty_tier"].as<std::string>();
                 arr.append(l);
             }

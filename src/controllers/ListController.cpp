@@ -11,6 +11,15 @@
 using namespace pt::controllers;
 using namespace drogon;
 
+static std::string sqlLiteral(const std::string &value) {
+    std::string escaped = "'";
+    for (char c : value) {
+        if (c == '\'') escaped += "''";
+        else escaped += c;
+    }
+    return escaped + "'";
+}
+
 static Json::Value levelToJson(const orm::Row &row) {
     Json::Value j;
     j["id"]             = static_cast<Json::Int64>(row["id"].as<long long>());
@@ -50,43 +59,36 @@ void ListController::getList(const HttpRequestPtr &req,
     auto minPts  = req->getParameter("min_points");
 
     std::string whereClauses;
-    std::vector<std::string> params;
-    int paramIdx = 1;
-
     auto addWhere = [&](const std::string &clause) {
         whereClauses += whereClauses.empty() ? " WHERE " : " AND ";
         whereClauses += clause;
     };
 
     if (!tier.empty()) {
-        addWhere("difficulty_tier = $" + std::to_string(paramIdx++));
-        params.push_back(tier);
+        addWhere("difficulty_tier = " + sqlLiteral(tier));
     }
     if (!creator.empty()) {
-        addWhere("$" + std::to_string(paramIdx++) + " = ANY(creators)");
-        params.push_back(creator);
+        addWhere(sqlLiteral(creator) + " = ANY(creators)");
     }
     if (!q.empty()) {
-        addWhere("name ILIKE $" + std::to_string(paramIdx++));
-        params.push_back("%" + q + "%");
+        addWhere("name ILIKE " + sqlLiteral("%" + q + "%"));
     }
     if (!minPts.empty()) {
-        addWhere("points >= $" + std::to_string(paramIdx++));
-        params.push_back(minPts);
+        try {
+            size_t consumed = 0;
+            const auto points = std::stod(minPts, &consumed);
+            if (consumed == minPts.size() && points >= 0) addWhere("points >= " + std::to_string(points));
+        } catch (...) {}
     }
 
     auto countSql = "SELECT COUNT(*) FROM demon_levels" + whereClauses;
     auto dataSql  = "SELECT id, rank, name, points, verified_by, creators, video_url, thumbnail_url, difficulty_tier, created_at, "
                     "(SELECT COUNT(*) FROM records r WHERE r.level_id = demon_levels.id AND r.status = 'accepted') AS records_count "
                     "FROM demon_levels" + whereClauses +
-                    " ORDER BY rank ASC LIMIT $" + std::to_string(paramIdx) +
-                    " OFFSET $" + std::to_string(paramIdx + 1);
+                    " ORDER BY rank ASC LIMIT " + std::to_string(limit) +
+                    " OFFSET " + std::to_string(offset);
 
     auto db = drogon::app().getDbClient();
-    auto limitStr = std::to_string(limit);
-    auto offsetStr = std::to_string(offset);
-    params.push_back(limitStr);
-    params.push_back(offsetStr);
 
     db->execSqlAsync(countSql + ";",
         [=, cb = std::move(cb), dataSql = dataSql](const orm::Result &countRes) mutable {
