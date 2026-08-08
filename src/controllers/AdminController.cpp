@@ -6,6 +6,7 @@
 #include "AdminController.h"
 #include "../utils/env.h"
 #include <drogon/drogon.h>
+#include <string_view>
 
 using namespace pt::controllers;
 using namespace drogon;
@@ -17,6 +18,27 @@ static bool isAdmin(const HttpRequestPtr &req) {
 
 #define REQUIRE_ADMIN(req, cb) \
     if (!isAdmin(req)) { cb(pt::errorResponse(k401Unauthorized, "Admin access required.")); return; }
+
+static std::string youtubeThumbnailUrl(const std::string &videoUrl) {
+    std::string_view url(videoUrl);
+    std::string_view id;
+    const auto extractAfter = [&url](std::string_view marker) {
+        const auto pos = url.find(marker);
+        if (pos == std::string_view::npos) return std::string_view{};
+        auto value = url.substr(pos + marker.size());
+        const auto end = value.find_first_of("?&#/");
+        return value.substr(0, end);
+    };
+    if (url.find("youtu.be/") != std::string_view::npos) id = extractAfter("youtu.be/");
+    else if (url.find("youtube.com/watch") != std::string_view::npos) {
+        const auto query = url.find("v=");
+        if (query != std::string_view::npos) id = extractAfter("v=");
+    } else if (url.find("youtube.com/shorts/") != std::string_view::npos) id = extractAfter("youtube.com/shorts/");
+    else if (url.find("youtube.com/embed/") != std::string_view::npos) id = extractAfter("youtube.com/embed/");
+
+    if (id.size() != 11 || id.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != std::string_view::npos) return "";
+    return "https://i.ytimg.com/vi/" + std::string(id) + "/hqdefault.jpg";
+}
 
 void AdminController::login(const HttpRequestPtr &req,
                             std::function<void(const HttpResponsePtr &)> &&cb) {
@@ -315,6 +337,7 @@ void AdminController::addLevel(const HttpRequestPtr &req,
     auto rank  = (*body)["rank"].asInt();
     auto ver   = (*body)["verified_by"].asString();
     auto vid   = (*body)["video_url"].asString();
+    auto thumbnail = youtubeThumbnailUrl(vid);
     auto tier  = (*body)["difficulty_tier"].asString();
     auto pts   = (*body)["points"].asDouble();
     std::string creatorsArr = "{";
@@ -326,8 +349,8 @@ void AdminController::addLevel(const HttpRequestPtr &req,
         [=, cb = std::move(cb)](const orm::Result &) mutable {
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
-                "INSERT INTO demon_levels (rank, name, verified_by, video_url, difficulty_tier, points, creators) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, rank, name, points, verified_by, difficulty_tier",
+                "INSERT INTO demon_levels (rank, name, verified_by, video_url, thumbnail_url, difficulty_tier, points, creators) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, rank, name, points, verified_by, difficulty_tier",
                 [=, cb = std::move(cb)](const orm::Result &res) mutable {
                     if (res.empty()) { cb(pt::errorResponse(k500InternalServerError, "Insert failed.")); return; }
                     auto levelId = res[0]["id"].as<long long>();
@@ -341,7 +364,7 @@ void AdminController::addLevel(const HttpRequestPtr &req,
                     j["level"] = lvl; cb(pt::okResponse(j));
                 },
                 [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-                rank, name, ver, vid, tier, pts, creatorsArr);
+                rank, name, ver, vid, thumbnail, tier, pts, creatorsArr);
         },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         rank);
@@ -357,6 +380,7 @@ void AdminController::updateLevel(const HttpRequestPtr &req,
     auto rank  = (*body)["rank"].asInt();
     auto ver   = (*body)["verified_by"].asString();
     auto vid   = (*body)["video_url"].asString();
+    auto thumbnail = youtubeThumbnailUrl(vid);
     auto tier  = (*body)["difficulty_tier"].asString();
     auto pts   = (*body)["points"].asDouble();
     std::string creatorsArr = "{";
@@ -368,7 +392,7 @@ void AdminController::updateLevel(const HttpRequestPtr &req,
             int oldRank = res.empty() ? rank : res[0]["rank"].as<int>();
             auto db2 = drogon::app().getDbClient();
             db2->execSqlAsync(
-                "UPDATE demon_levels SET name=$1, rank=$2, verified_by=$3, video_url=$4, difficulty_tier=$5, points=$6, creators=$7 WHERE id=$8",
+                "UPDATE demon_levels SET name=$1, rank=$2, verified_by=$3, video_url=$4, thumbnail_url=$5, difficulty_tier=$6, points=$7, creators=$8 WHERE id=$9",
                 [=, cb = std::move(cb)](const orm::Result &) mutable {
                     if (oldRank != rank) {
                         auto db3 = drogon::app().getDbClient();
@@ -378,7 +402,7 @@ void AdminController::updateLevel(const HttpRequestPtr &req,
                     Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
                 },
                 [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-                name, rank, ver, vid, tier, pts, creatorsArr, id);
+                name, rank, ver, vid, thumbnail, tier, pts, creatorsArr, id);
         },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         id);
