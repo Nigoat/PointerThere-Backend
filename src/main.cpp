@@ -78,6 +78,9 @@ static void parsePostgresUrl(const std::string &url, std::string &host, unsigned
 int main() {
     loadEnvFile(".env");
 
+    // Force libpq to enable SSL mode require for Neon PostgreSQL
+    setenv("PGSSLMODE", "require", 1);
+
     pt::JwtHelper::instance().setSecret(pt::env("JWT_SECRET", "changeme"));
 
     auto port = std::stoi(pt::env("PORT", "8080"));
@@ -104,23 +107,11 @@ int main() {
             pgConfig.username = dbUser;
             pgConfig.password = dbPassword;
             pgConfig.databaseName = dbName;
-            pgConfig.connectionNumber = 10;
+            pgConfig.connectionNumber = 5;
             pgConfig.name = "default";
             app.addDbClient(pgConfig);
 
-            drogon::orm::PostgresConfig pgConfigFast = pgConfig;
-            pgConfigFast.isFast = true;
-            app.addDbClient(pgConfigFast);
-
-            drogon::orm::PostgresConfig pgConfig2 = pgConfig;
-            pgConfig2.name = "";
-            app.addDbClient(pgConfig2);
-
-            drogon::orm::PostgresConfig pgConfig2Fast = pgConfig2;
-            pgConfig2Fast.isFast = true;
-            app.addDbClient(pgConfig2Fast);
-
-            std::cout << "[PointerThere] PostgreSQL database clients (standard & fast) added successfully.\n";
+            std::cout << "[PointerThere] PostgreSQL database client pool initialized successfully.\n";
         } catch (const std::exception &e) {
             std::cerr << "[PointerThere] ERROR initializing DB client: " << e.what() << "\n";
         }
