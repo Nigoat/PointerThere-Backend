@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <string>
 #include "utils/env.h"
 #include "utils/jwt_helper.h"
 #include "utils/middleware.h"
@@ -28,6 +29,60 @@ static void loadEnvFile(const std::string &path) {
         val.erase(val.find_last_not_of(" \t\"'") + 1);
         setenv(key.c_str(), val.c_str(), 0);
     }
+}
+
+// Robust PostgreSQL URL parser (handles optional :port and ?query params)
+static bool parsePostgresUrl(const std::string &url, std::string &host, unsigned short &port,
+                             std::string &user, std::string &password, std::string &database) {
+    std::string str = url;
+    const std::string prefix = "postgresql://";
+    const std::string prefixAlt = "postgres://";
+    
+    if (str.rfind(prefix, 0) == 0) {
+        str = str.substr(prefix.length());
+    } else if (str.rfind(prefixAlt, 0) == 0) {
+        str = str.substr(prefixAlt.length());
+    }
+
+    // Find user:password@host:port/database?params
+    auto atPos = str.find('@');
+    if (atPos == std::string::npos) return false;
+
+    std::string userPass = str.substr(0, atPos);
+    std::string hostDb = str.substr(atPos + 1);
+
+    auto colonPos = userPass.find(':');
+    if (colonPos != std::string::npos) {
+        user = userPass.substr(0, colonPos);
+        password = userPass.substr(colonPos + 1);
+    } else {
+        user = userPass;
+        password = "";
+    }
+
+    auto slashPos = hostDb.find('/');
+    if (slashPos == std::string::npos) return false;
+
+    std::string hostPort = hostDb.substr(0, slashPos);
+    std::string dbParams = hostDb.substr(slashPos + 1);
+
+    auto qPos = dbParams.find('?');
+    if (qPos != std::string::npos) {
+        database = dbParams.substr(0, qPos);
+    } else {
+        database = dbParams;
+    }
+
+    auto hostColon = hostPort.find(':');
+    if (hostColon != std::string::npos) {
+        host = hostPort.substr(0, hostColon);
+        port = static_cast<unsigned short>(std::stoi(hostPort.substr(hostColon + 1)));
+    } else {
+        host = hostPort;
+        port = 5432;
+    }
+
+    return !host.empty() && !user.empty() && !database.empty();
 }
 
 int main() {
@@ -52,15 +107,22 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    try {
+    std::string dbHost, dbUser, dbPassword, dbName;
+    unsigned short dbPort = 5432;
+
+    if (parsePostgresUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName)) {
+        std::cout << "[PointerThere] Parsed DB URL -> Host: " << dbHost << ", Port: " << dbPort << ", User: " << dbUser << ", DB: " << dbName << "\n";
         drogon::orm::PostgresConfig pgConfig;
-        pgConfig.connectInfo = dbUrl;
+        pgConfig.host = dbHost;
+        pgConfig.port = dbPort;
+        pgConfig.username = dbUser;
+        pgConfig.password = dbPassword;
+        pgConfig.databaseName = dbName;
         pgConfig.connectionNumber = 10;
         pgConfig.name = "default";
         app.addDbClient(pgConfig);
-        std::cout << "[PointerThere] PostgreSQL client initialized with DATABASE_URL.\n";
-    } catch (const std::exception &e) {
-        std::cerr << "[PointerThere] WARNING: DB Client Init Error: " << e.what() << "\n";
+    } else {
+        std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly, attempting default client connection.\n";
     }
 
     app.registerHandler("/", [](const drogon::HttpRequestPtr &,
