@@ -6,14 +6,36 @@
 #include "OtherControllers.h"
 #include "../utils/env.h"
 #include "../utils/jwt_helper.h"
+#include "../utils/resend.h"
 #include "../utils/turnstile.h"
 #include <drogon/drogon.h>
 #include <bcrypt/BCrypt.hpp>
 #include <random>
+#include <thread>
+#include <iomanip>
+#include <sstream>
 #include <openssl/sha.h>
 
 using namespace pt::controllers;
 using namespace drogon;
+
+static std::string generateTwoFactorCode() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 9);
+    std::string code;
+    for (int i = 0; i < 6; ++i) code += static_cast<char>('0' + dis(gen));
+    return code;
+}
+
+static std::string sha256Hex(const std::string &value) {
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    SHA256(reinterpret_cast<const unsigned char *>(value.data()), value.size(), digest);
+    std::ostringstream stream;
+    stream << std::hex << std::setfill('0');
+    for (unsigned char byte : digest) stream << std::setw(2) << static_cast<int>(byte);
+    return stream.str();
+}
 
 void RecordsController::submitRecord(const HttpRequestPtr &req,
                                       std::function<void(const HttpResponsePtr &)> &&cb) {
@@ -474,24 +496,26 @@ void UserController::setup2FA(const HttpRequestPtr &req,
     auto payload = pt::JwtHelper::instance().verify(*tokenOpt);
     if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
 
-    static const char base32chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, 31);
-    std::string secret;
-    for (int i = 0; i < 32; ++i) secret += base32chars[dis(gen)];
+    const auto code = generateTwoFactorCode();
+    const auto codeHash = sha256Hex(code);
 
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync("UPDATE users SET two_factor_secret = $1 WHERE id = $2 RETURNING email, username",
+    db->execSqlAsync("UPDATE users SET two_factor_secret = $1, two_factor_code_expires = NOW() + INTERVAL '10 minutes' WHERE id = $2 RETURNING email",
         [=, cb = std::move(cb)](const orm::Result &res) mutable {
             if (res.empty()) { cb(pt::errorResponse(k404NotFound, "User not found.")); return; }
-            auto username = res[0]["username"].as<std::string>();
-            std::string uri = "otpauth://totp/PointerThere%3A" + username +
-                              "?secret=" + secret + "&issuer=PointerThere&algorithm=SHA1&digits=6&period=30";
-            Json::Value j; j["uri"] = uri; cb(pt::okResponse(j));
+            const auto email = res[0]["email"].as<std::string>();
+            std::thread([email, code, cb = std::move(cb)]() mutable {
+                const bool sent = pt::sendResendEmail(email, "Your PointerThere 2FA code",
+                    "<p>Your PointerThere two-factor authentication code is <strong style=\"font-size:24px\">" + code +
+                    "</strong>.</p><p>It expires in 10 minutes. If you did not request this, you can ignore this email.</p>");
+                drogon::app().getLoop()->runInLoop([sent, cb = std::move(cb)]() mutable {
+                    if (!sent) { cb(pt::errorResponse(k500InternalServerError, "Unable to send the verification email. Please try again later.")); return; }
+                    Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
+                });
+            }).detach();
         },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-        secret, std::stoll(payload->user_id));
+        codeHash, std::stoll(payload->user_id));
 }
 
 void UserController::verify2FA(const HttpRequestPtr &req,
@@ -501,11 +525,18 @@ void UserController::verify2FA(const HttpRequestPtr &req,
     auto payload = pt::JwtHelper::instance().verify(*tokenOpt);
     if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
 
+    auto body = req->getJsonObject();
+    const auto code = body ? (*body)["code"].asString() : "";
+    if (code.size() != 6) { cb(pt::errorResponse(k400BadRequest, "Enter the 6-digit code sent to your email.")); return; }
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync("UPDATE users SET two_factor_enabled = TRUE WHERE id = $1",
-        [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
+    db->execSqlAsync("UPDATE users SET two_factor_enabled = TRUE, two_factor_secret = NULL, two_factor_code_expires = NULL "
+                     "WHERE id = $1 AND two_factor_secret = $2 AND two_factor_code_expires > NOW() RETURNING id",
+        [cb](const orm::Result &res) mutable {
+            if (res.empty()) { cb(pt::errorResponse(k400BadRequest, "Invalid or expired verification code.")); return; }
+            Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
+        },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
-        std::stoll(payload->user_id));
+        std::stoll(payload->user_id), sha256Hex(code));
 }
 
 void UserController::disable2FA(const HttpRequestPtr &req,
@@ -516,7 +547,7 @@ void UserController::disable2FA(const HttpRequestPtr &req,
     if (!payload) { cb(pt::errorResponse(k401Unauthorized, "Invalid token.")); return; }
 
     auto db = drogon::app().getDbClient();
-    db->execSqlAsync("UPDATE users SET two_factor_enabled = FALSE, two_factor_secret = NULL WHERE id = $1",
+    db->execSqlAsync("UPDATE users SET two_factor_enabled = FALSE, two_factor_secret = NULL, two_factor_code_expires = NULL WHERE id = $1",
         [cb](const orm::Result &) mutable { Json::Value j; j["ok"] = true; cb(pt::okResponse(j)); },
         [cb](const orm::DrogonDbException &e) mutable { cb(pt::errorResponse(k500InternalServerError, e.base().what())); },
         std::stoll(payload->user_id));

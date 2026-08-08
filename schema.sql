@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
   reset_token_expires TIMESTAMPTZ,
   two_factor_enabled  BOOLEAN NOT NULL DEFAULT FALSE,
   two_factor_secret   TEXT,
+  two_factor_code_expires TIMESTAMPTZ,
   discord_id          TEXT UNIQUE,
   discord_username    TEXT,
   google_id           TEXT UNIQUE,
@@ -39,6 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_users_discord_id ON users (discord_id);
 CREATE INDEX IF NOT EXISTS idx_users_google_id  ON users (google_id);
 CREATE INDEX IF NOT EXISTS idx_users_points     ON users (points DESC);
 CREATE INDEX IF NOT EXISTS idx_users_username_trgm ON users USING GIN (username gin_trgm_ops);
+
+-- Safe to run on an existing Railway/Neon database when deploying email 2FA.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_code_expires TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS demon_levels (
   id              BIGSERIAL PRIMARY KEY,
