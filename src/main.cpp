@@ -107,6 +107,7 @@ int main() {
         try {
             if (parsePostgresUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName)) {
                 std::cout << "[PointerThere] Parsed DB URL -> Host: " << dbHost << ", Port: " << dbPort << ", User: " << dbUser << ", DB: " << dbName << "\n";
+                
                 drogon::orm::PostgresConfig pgConfig;
                 pgConfig.host = dbHost;
                 pgConfig.port = dbPort;
@@ -116,7 +117,13 @@ int main() {
                 pgConfig.connectionNumber = 10;
                 pgConfig.name = "default";
                 app.addDbClient(pgConfig);
-                std::cout << "[PointerThere] DB Client added successfully.\n";
+
+                // Also create default unnamed client fallback
+                drogon::orm::PostgresConfig pgConfig2 = pgConfig;
+                pgConfig2.name = "";
+                app.addDbClient(pgConfig2);
+
+                std::cout << "[PointerThere] PostgreSQL database clients added successfully.\n";
             } else {
                 std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly.\n";
             }
