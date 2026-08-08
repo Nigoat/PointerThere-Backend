@@ -94,12 +94,7 @@ int main() {
     auto port  = std::stoi(pt::env("PORT", "8080"));
     auto dbUrl = pt::env("DATABASE_URL");
 
-    if (dbUrl.empty()) {
-        std::cerr << "[PointerThere] ERROR: DATABASE_URL environment variable is missing!\n";
-        return 1;
-    }
-
-    std::cout << "[PointerThere] Starting backend service on " << host << ":" << port << " and 0.0.0.0:8080\n";
+    std::cout << "[PointerThere] Starting backend service on 0.0.0.0:8080 and " << host << ":" << port << "\n";
 
     auto &app = drogon::app();
 
@@ -112,22 +107,31 @@ int main() {
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
-    std::string dbHost, dbUser, dbPassword, dbName;
-    unsigned short dbPort = 5432;
+    if (!dbUrl.empty()) {
+        std::string dbHost, dbUser, dbPassword, dbName;
+        unsigned short dbPort = 5432;
 
-    if (parsePostgresUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName)) {
-        std::cout << "[PointerThere] Parsed DB URL -> Host: " << dbHost << ", Port: " << dbPort << ", User: " << dbUser << ", DB: " << dbName << "\n";
-        drogon::orm::PostgresConfig pgConfig;
-        pgConfig.host = dbHost;
-        pgConfig.port = dbPort;
-        pgConfig.username = dbUser;
-        pgConfig.password = dbPassword;
-        pgConfig.databaseName = dbName;
-        pgConfig.connectionNumber = 10;
-        pgConfig.name = "default";
-        app.addDbClient(pgConfig);
+        try {
+            if (parsePostgresUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName)) {
+                std::cout << "[PointerThere] Parsed DB URL -> Host: " << dbHost << ", Port: " << dbPort << ", User: " << dbUser << ", DB: " << dbName << "\n";
+                drogon::orm::PostgresConfig pgConfig;
+                pgConfig.host = dbHost;
+                pgConfig.port = dbPort;
+                pgConfig.username = dbUser;
+                pgConfig.password = dbPassword;
+                pgConfig.databaseName = dbName;
+                pgConfig.connectionNumber = 10;
+                pgConfig.name = "default";
+                app.addDbClient(pgConfig);
+                std::cout << "[PointerThere] DB Client added successfully.\n";
+            } else {
+                std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly.\n";
+            }
+        } catch (const std::exception &e) {
+            std::cerr << "[PointerThere] ERROR initializing DB client: " << e.what() << "\n";
+        }
     } else {
-        std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly, attempting default client connection.\n";
+        std::cerr << "[PointerThere] WARNING: DATABASE_URL is empty.\n";
     }
 
     app.registerHandler("/", [](const drogon::HttpRequestPtr &,
