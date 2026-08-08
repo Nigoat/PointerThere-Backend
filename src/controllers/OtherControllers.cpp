@@ -636,7 +636,7 @@ void UserController::verifyDiscord(const HttpRequestPtr &req,
                                              discordStatus == 401 ? " The Discord bot token is invalid." :
                                              discordStatus == 404 ? " Check the Discord server and Verified role IDs." :
                                              " Please try again later.";
-                        cb(pt::errorResponse(k500InternalServerError, "Unable to assign the Discord role." + details)); return;
+                        cb(pt::errorResponse(k500InternalServerError, std::string("Unable to assign the Discord role.") + details)); return;
                     }
                     Json::Value j; j["ok"] = true; cb(pt::okResponse(j));
                 });
