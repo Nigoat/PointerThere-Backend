@@ -125,13 +125,20 @@ int main() {
 
                 std::cout << "[PointerThere] PostgreSQL database clients added successfully.\n";
             } else {
-                std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly.\n";
+                std::cerr << "[PointerThere] WARNING: Could not parse DATABASE_URL cleanly. Trying fallback DbClient::newPgClient...\n";
+                try {
+                    auto client = drogon::orm::DbClient::newPgClient(dbUrl, 10);
+                    app.addDbClient(client);
+                    std::cout << "[PointerThere] Fallback DbClient added successfully.\n";
+                } catch (const std::exception &e) {
+                    std::cerr << "[PointerThere] Fallback DbClient error: " << e.what() << "\n";
+                }
             }
         } catch (const std::exception &e) {
             std::cerr << "[PointerThere] ERROR initializing DB client: " << e.what() << "\n";
         }
     } else {
-        std::cerr << "[PointerThere] WARNING: DATABASE_URL is empty.\n";
+        std::cerr << "[PointerThere] WARNING: DATABASE_URL environment variable is empty!\n";
     }
 
     app.registerHandler("/", [](const drogon::HttpRequestPtr &,
