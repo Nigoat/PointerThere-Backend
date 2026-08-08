@@ -99,11 +99,16 @@ int main() {
         return 1;
     }
 
-    std::cout << "[PointerThere] Starting backend service on " << host << ":" << port << "\n";
+    std::cout << "[PointerThere] Starting backend service on " << host << ":" << port << " and 0.0.0.0:8080\n";
 
     auto &app = drogon::app();
 
-    app.addListener(host, port);
+    // Listen on 8080 AND dynamic PORT to guarantee Railway proxy match
+    app.addListener("0.0.0.0", 8080);
+    if (port != 8080) {
+        app.addListener("0.0.0.0", port);
+    }
+
     app.setThreadNum(std::thread::hardware_concurrency());
     app.setLogLevel(trantor::Logger::kInfo);
 
@@ -148,7 +153,7 @@ int main() {
         return resp;
     }());
 
-    std::cout << "[PointerThere] Backend ready and listening on " << host << ":" << port << "\n";
+    std::cout << "[PointerThere] Backend ready and listening on 0.0.0.0:8080\n";
     app.run();
     return 0;
 }
