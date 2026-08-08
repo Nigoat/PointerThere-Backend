@@ -20,6 +20,25 @@ static std::string sqlLiteral(const std::string &value) {
     return escaped + "'";
 }
 
+static std::string youtubeThumbnailUrl(const std::string &videoUrl) {
+    std::string videoId;
+
+    if (const auto shortPos = videoUrl.find("youtu.be/"); shortPos != std::string::npos) {
+        videoId = videoUrl.substr(shortPos + 9);
+    } else if (const auto watchPos = videoUrl.find("youtube.com/watch"); watchPos != std::string::npos) {
+        const auto valuePos = videoUrl.find("v=", watchPos);
+        if (valuePos != std::string::npos) videoId = videoUrl.substr(valuePos + 2);
+    } else if (const auto shortsPos = videoUrl.find("youtube.com/shorts/"); shortsPos != std::string::npos) {
+        videoId = videoUrl.substr(shortsPos + 19);
+    } else if (const auto embedPos = videoUrl.find("youtube.com/embed/"); embedPos != std::string::npos) {
+        videoId = videoUrl.substr(embedPos + 18);
+    }
+
+    const auto end = videoId.find_first_of("?&#/");
+    if (end != std::string::npos) videoId.resize(end);
+    return videoId.size() == 11 ? "https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg" : "";
+}
+
 static Json::Value levelToJson(const orm::Row &row) {
     Json::Value j;
     j["id"]             = static_cast<Json::Int64>(row["id"].as<long long>());
@@ -27,8 +46,11 @@ static Json::Value levelToJson(const orm::Row &row) {
     j["name"]           = row["name"].as<std::string>();
     j["points"]         = row["points"].as<double>();
     j["verified_by"]    = row["verified_by"].as<std::string>();
-    j["video_url"]      = row["video_url"].as<std::string>();
-    j["thumbnail_url"]  = row["thumbnail_url"].isNull() ? "" : row["thumbnail_url"].as<std::string>();
+    const auto videoUrl = row["video_url"].as<std::string>();
+    auto thumbnailUrl = row["thumbnail_url"].isNull() ? "" : row["thumbnail_url"].as<std::string>();
+    if (thumbnailUrl.empty()) thumbnailUrl = youtubeThumbnailUrl(videoUrl);
+    j["video_url"]      = videoUrl;
+    j["thumbnail_url"]  = thumbnailUrl;
     j["difficulty_tier"] = row["difficulty_tier"].as<std::string>();
     j["created_at"]     = row["created_at"].as<std::string>();
 
@@ -50,8 +72,17 @@ static Json::Value levelToJson(const orm::Row &row) {
 
 void ListController::getList(const HttpRequestPtr &req,
                               std::function<void(const HttpResponsePtr &)> &&cb, int) {
-    auto page    = std::max(1, std::stoi(req->getParameter("page").empty() ? "1" : req->getParameter("page")));
-    auto limit   = std::min(100, std::max(1, std::stoi(req->getParameter("limit").empty() ? "20" : req->getParameter("limit"))));
+    int page = 1;
+    int limit = 20;
+    try {
+        const auto pageParam = req->getParameter("page");
+        const auto limitParam = req->getParameter("limit");
+        if (!pageParam.empty()) page = std::max(1, std::stoi(pageParam));
+        if (!limitParam.empty()) limit = std::min(100, std::max(1, std::stoi(limitParam)));
+    } catch (...) {
+        cb(pt::errorResponse(k400BadRequest, "Page and limit must be valid numbers."));
+        return;
+    }
     auto offset  = (page - 1) * limit;
     auto tier    = req->getParameter("tier");
     auto creator = req->getParameter("creator");
@@ -81,31 +112,22 @@ void ListController::getList(const HttpRequestPtr &req,
         } catch (...) {}
     }
 
-    auto countSql = "SELECT COUNT(*) FROM demon_levels" + whereClauses;
     auto dataSql  = "SELECT id, rank, name, points, verified_by, creators, video_url, thumbnail_url, difficulty_tier, created_at, "
-                    "(SELECT COUNT(*) FROM records r WHERE r.level_id = demon_levels.id AND r.status = 'accepted') AS records_count "
+                    "(SELECT COUNT(*) FROM records r WHERE r.level_id = demon_levels.id AND r.status = 'accepted') AS records_count, "
+                    "COUNT(*) OVER() AS total_count "
                     "FROM demon_levels" + whereClauses +
                     " ORDER BY rank ASC LIMIT " + std::to_string(limit) +
                     " OFFSET " + std::to_string(offset);
 
     auto db = drogon::app().getDbClient();
-
-    db->execSqlAsync(countSql + ";",
-        [=, cb = std::move(cb), dataSql = dataSql](const orm::Result &countRes) mutable {
-            long long total = countRes[0][0].as<long long>();
-            auto db2 = drogon::app().getDbClient();
-            db2->execSqlAsync(dataSql + ";",
-                [=, cb = std::move(cb), total = total](const orm::Result &dataRes) mutable {
-                    Json::Value j;
-                    j["total"]  = static_cast<Json::Int64>(total);
-                    Json::Value levels(Json::arrayValue);
-                    for (const auto &row : dataRes) levels.append(levelToJson(row));
-                    j["levels"] = levels;
-                    cb(pt::okResponse(j));
-                },
-                [cb](const orm::DrogonDbException &e) mutable {
-                    cb(pt::errorResponse(k500InternalServerError, e.base().what()));
-                });
+    db->execSqlAsync(dataSql,
+        [cb](const orm::Result &dataRes) mutable {
+            Json::Value j;
+            j["total"] = dataRes.empty() ? 0 : static_cast<Json::Int64>(dataRes[0]["total_count"].as<long long>());
+            Json::Value levels(Json::arrayValue);
+            for (const auto &row : dataRes) levels.append(levelToJson(row));
+            j["levels"] = levels;
+            cb(pt::okResponse(j));
         },
         [cb](const orm::DrogonDbException &e) mutable {
             cb(pt::errorResponse(k500InternalServerError, e.base().what()));
