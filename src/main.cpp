@@ -101,7 +101,10 @@ int main() {
             parsePostgresUrl(dbUrl, dbHost, dbPort, dbUser, dbPassword, dbName);
             std::cout << "[PointerThere] DB Config -> Host: " << dbHost << ", Port: " << dbPort << ", User: " << dbUser << ", DB: " << dbName << "\n";
             
-            drogon::orm::PostgresConfig pgConfig;
+            // Value-initialize every setting. PostgresConfig has scalar fields such
+            // as isFast, timeout, and autoBatch; leaving them uninitialized can make
+            // Drogon create an unstable client pool.
+            drogon::orm::PostgresConfig pgConfig{};
             pgConfig.host = dbHost;
             pgConfig.port = dbPort;
             pgConfig.username = dbUser;
@@ -109,6 +112,9 @@ int main() {
             pgConfig.databaseName = dbName;
             pgConfig.connectionNumber = 5;
             pgConfig.name = "default";
+            pgConfig.isFast = false;
+            pgConfig.timeout = 30.0;
+            pgConfig.autoBatch = false;
             app.addDbClient(pgConfig);
 
             std::cout << "[PointerThere] PostgreSQL database client pool initialized successfully.\n";
